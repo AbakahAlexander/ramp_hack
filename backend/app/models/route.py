@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Table, Text
+from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -81,16 +81,23 @@ class Route(Base):
 
 
 class RouteHold(Base):
-    """One hold on a route, in climb order, placed on the wall grid."""
+    """One hold on a route, in climb order.
+
+    Spatial fields (x, y, size) are the source of truth for heatmap display.
+    row/col/cell_index are derived coarse grid values for legacy clients.
+    """
 
     __tablename__ = "route_holds"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     route_id: Mapped[str] = mapped_column(String(36), ForeignKey("routes.id"), nullable=False, index=True)
     sequence_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = start
-    cell_index: Mapped[int] = mapped_column(Integer, nullable=False)  # row-major index on wall grid
-    row: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = top
-    col: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = left
+    cell_index: Mapped[int] = mapped_column(Integer, nullable=False)  # legacy row-major
+    row: Mapped[int] = mapped_column(Integer, nullable=False)  # legacy 0 = top
+    col: Mapped[int] = mapped_column(Integer, nullable=False)  # legacy 0 = left
+    x: Mapped[float] = mapped_column(Float, default=0.5)  # 0 = left, 1 = right
+    y: Mapped[float] = mapped_column(Float, default=0.5)  # 0 = top, 1 = bottom
+    size: Mapped[float] = mapped_column(Float, default=0.05)  # relative diameter
     hold_type: Mapped[str] = mapped_column(String(40), default=HoldType.OTHER.value)
     notes: Mapped[str | None] = mapped_column(String(200), nullable=True)
 

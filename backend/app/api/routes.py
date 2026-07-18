@@ -1,7 +1,10 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -13,6 +16,9 @@ from app.schemas import RouteCreate, RouteDetailOut, RouteListOut, RouteStatusUp
 from app.services.metrics import route_to_detail
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
+
+UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _gym_walls(db: Session, gym_id: str) -> list[str]:
@@ -40,15 +46,28 @@ def _apply_holds(route: Route, wall: Wall, hold_inputs: list) -> None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _save_upload(raw: bytes, content_type: str | None) -> str:
+    ext = ".jpg"
+    if content_type == "image/png":
+        ext = ".png"
+    elif content_type == "image/webp":
+        ext = ".webp"
+    name = f"{uuid4().hex}{ext}"
+    path = UPLOAD_DIR / name
+    path.write_bytes(raw)
+    return name
+
+
 @router.post(
     "/from-image",
     response_model=RouteDetailOut,
     status_code=201,
-    summary="Add route from photo (AI → grid)",
-    response_description="Persisted route with normalized hold sequence",
+    summary="Add route from photo (AI / CV → spatial holds)",
+    response_description="Persisted route with continuous hold positions for heatmap display",
     description=(
-        "Upload a photo of a set route. Vision AI maps holds onto the wall's grid "
-        "(row/col + hold_type), then saves the route. No hardcoded routes — empty gym until you add."
+        "Upload a photo of a set route. Color segmentation (OpenCV) maps holds to normalized "
+        "x/y + size blobs (not a coarse grid). Optional color_identifier focuses one route on a "
+        "multi-route wall. Photo is stored for heatmap overlay."
     ),
 )
 async def create_route_from_image(
@@ -86,6 +105,9 @@ async def create_route_from_image(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
 
+    filename = _save_upload(raw, image.content_type)
+    photo_url = f"/api/v1/routes/photos/{filename}"
+
     route = Route(
         wall_id=wall.id,
         name=name or extracted.get("name") or "New route",
@@ -96,13 +118,31 @@ async def create_route_from_image(
         status="active",
         set_date=date.today(),
         notes=extracted.get("notes"),
-        photo_url=None,
+        photo_url=photo_url,
     )
     _apply_holds(route, wall, extracted.get("holds") or [])
     db.add(route)
     db.commit()
     db.refresh(route)
     return route_to_detail(_get_route_for_gym(db, route.id, gym.id), db)
+
+
+@router.get(
+    "/photos/{filename}",
+    summary="Serve an uploaded route photo",
+    include_in_schema=False,
+)
+def get_route_photo(filename: str):
+    safe = Path(filename).name
+    path = UPLOAD_DIR / safe
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    media = "image/jpeg"
+    if safe.endswith(".png"):
+        media = "image/png"
+    elif safe.endswith(".webp"):
+        media = "image/webp"
+    return FileResponse(path, media_type=media)
 
 
 @router.get(

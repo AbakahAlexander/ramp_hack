@@ -36,7 +36,13 @@ export function mapApiRoute(r) {
     color: r.display_color || "#888888",
     colorName: r.color_identifier,
     cells: r.cells?.length ? r.cells : (r.holds || []).map((h) => h.cell_index),
-    holds: r.holds || [],
+    holds: (r.holds || []).map((h) => ({
+      ...h,
+      x: h.x ?? null,
+      y: h.y ?? null,
+      size: h.size ?? 0.05,
+    })),
+    photoUrl: r.photo_url || null,
     health: r.health,
     notes: r.notes,
   };

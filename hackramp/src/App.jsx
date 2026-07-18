@@ -167,7 +167,7 @@ function GymHoldView({ routes, walls, selected, selectRoute }) {
     <section className="gym-map gym-hold-view" aria-label="Lit hold boards">
       <div className="map-heading">
         <span>Hold boards</span>
-        <small>Active routes light the grid — tap a hold to inspect</small>
+        <small>Selected route as a heatmap on the wall photo — blob size matches hold size</small>
       </div>
       <HoldGrid
         routes={routes}
@@ -204,6 +204,10 @@ function AddRouteModal({ walls, onClose, onCreated }) {
       setError("Select a wall.");
       return;
     }
+    if (!color.trim()) {
+      setError("Enter the route color (e.g. Blue) so we isolate the right holds.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -234,7 +238,7 @@ function AddRouteModal({ walls, onClose, onCreated }) {
           <div>
             <p className="eyebrow">NEW ROUTE</p>
             <h2 id="add-route-title">Add from photo</h2>
-            <p>AI maps holds onto the wall grid and saves the route.</p>
+            <p>AI / CV maps holds as a spatial heatmap (position + size) on the wall photo.</p>
           </div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}>
             ×
@@ -262,12 +266,17 @@ function AddRouteModal({ walls, onClose, onCreated }) {
           </label>
           <div className="modal-row">
             <label>
-              Name <span>(optional)</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Soft Landing" />
+              Color <span>(required for multi-route walls)</span>
+              <input
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                placeholder="Blue"
+                required
+              />
             </label>
             <label>
-              Color <span>(optional)</span>
-              <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Yellow" />
+              Name <span>(optional)</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Soft Landing" />
             </label>
             <label>
               Grade <span>(optional)</span>
@@ -389,7 +398,8 @@ function RouteDetails({ route, insight }) {
           <ul style={{ margin: "8px 0 0", paddingLeft: 16, fontSize: 10, color: "#63705f", lineHeight: 1.5 }}>
             {route.holds.map((h) => (
               <li key={`${h.sequence_index}-${h.cell_index}`}>
-                #{h.sequence_index + 1} · {h.hold_type} · row {h.row}, col {h.col}
+                #{h.sequence_index + 1} · {h.hold_type} · x {Number(h.x).toFixed(2)}, y{" "}
+                {Number(h.y).toFixed(2)} · size {Number(h.size).toFixed(2)}
                 {h.notes ? ` · ${h.notes}` : ""}
               </li>
             ))}

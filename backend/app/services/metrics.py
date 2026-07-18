@@ -158,6 +158,9 @@ def route_to_detail(route: Route, db: Session) -> RouteDetailOut:
             cell_index=h.cell_index,
             row=h.row,
             col=h.col,
+            x=float(h.x) if h.x is not None else 0.5,
+            y=float(h.y) if h.y is not None else 0.5,
+            size=float(h.size) if h.size is not None else 0.05,
             hold_type=h.hold_type,
             notes=h.notes,
         )

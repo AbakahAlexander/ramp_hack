@@ -1,5 +1,13 @@
 import { WALLS as DEFAULT_WALLS, isLitStatus } from "../data/wallsConfig";
+import { API_BASE } from "../api";
 
+function photoSrc(url) {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  return `${API_BASE}${url}`;
+}
+
+/** Spatial heatmap board — soft blobs at continuous x/y with size, optionally on wall photo. */
 export function HoldGrid({
   routes,
   walls = DEFAULT_WALLS,
@@ -9,10 +17,29 @@ export function HoldGrid({
   onSelectRoute,
 }) {
   const boards = walls?.length ? walls : DEFAULT_WALLS;
+  const focus = selectedRouteId ? routes.find((r) => r.id === selectedRouteId) : null;
+
+  // When a route with a photo is selected, show one large heatmap panel
+  if (focus?.photoUrl) {
+    return (
+      <div className="boards boards-heatmap">
+        <HeatmapPanel
+          route={focus}
+          wall={boards.find((w) => w.key === focus.wallKey) || boards[0]}
+          selected
+          onSelectWall={() => onSelectWall(focus.wallKey)}
+          onSelectRoute={onSelectRoute}
+          routes={routes.filter((r) => r.wallKey === focus.wallKey)}
+          selectedRouteId={selectedRouteId}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="boards">
       {boards.map((wall) => (
-        <WallPanel
+        <HeatmapPanel
           key={wall.key}
           wall={wall}
           routes={routes.filter((r) => r.wallKey === wall.key)}
@@ -26,33 +53,44 @@ export function HoldGrid({
   );
 }
 
-function WallPanel({
+function HeatmapPanel({
   wall,
-  routes,
+  routes = [],
+  route,
   selected,
   selectedRouteId,
   onSelectWall,
   onSelectRoute,
 }) {
-  const total = wall.cols * wall.rows;
-  const focusRoute = selectedRouteId ? routes.find((r) => r.id === selectedRouteId) : null;
+  const primary = route || (selectedRouteId ? routes.find((r) => r.id === selectedRouteId) : null);
+  const showRoutes = route ? [route] : routes;
+  const bg = photoSrc(primary?.photoUrl);
 
-  const cellMap = new Map();
-  for (const route of routes) {
-    const selected = route.id === selectedRouteId;
-    if (!isLitStatus(route.status) && !selected) continue;
-    if (route.status === "Strip soon" && !selected) continue;
-    if (focusRoute && route.id !== focusRoute.id) continue;
-    for (const idx of route.cells) {
-      const list = cellMap.get(idx) ?? [];
-      list.push(route);
-      cellMap.set(idx, list);
+  const blobs = [];
+  for (const r of showRoutes) {
+    const active = !selectedRouteId || r.id === selectedRouteId;
+    if (!isLitStatus(r.status) && r.id !== selectedRouteId) continue;
+    if (selectedRouteId && r.id !== selectedRouteId) continue;
+    for (const h of r.holds || []) {
+      const x = h.x ?? ((h.col + 0.5) / (wall?.cols || 8));
+      const y = h.y ?? ((h.row + 0.5) / (wall?.rows || 10));
+      const size = h.size ?? 0.05;
+      blobs.push({
+        key: `${r.id}-${h.sequence_index}-${h.cell_index}`,
+        x,
+        y,
+        size,
+        color: r.color,
+        routeId: r.id,
+        label: `${r.colorName || r.name} #${(h.sequence_index ?? 0) + 1}`,
+        active,
+      });
     }
   }
 
   return (
     <div
-      className={selected ? "board selected" : "board"}
+      className={selected ? "board board-heat selected" : "board board-heat"}
       onClick={onSelectWall}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onSelectWall();
@@ -61,42 +99,49 @@ function WallPanel({
       tabIndex={0}
     >
       <div className="board-head">
-        <span className="board-name">{wall.name}</span>
-        <span className="board-meta">{wall.zone}</span>
+        <span className="board-name">{wall?.name || primary?.wall || "Wall"}</span>
+        <span className="board-meta">{wall?.zone || "heatmap"}</span>
       </div>
       <div
-        className="grid"
-        style={{ gridTemplateColumns: `repeat(${wall.cols}, 1fr)` }}
+        className={bg ? "heat-stage has-photo" : "heat-stage"}
+        style={bg ? { backgroundImage: `url(${bg})` } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
-        {Array.from({ length: total }, (_, i) => {
-          const hits = cellMap.get(i) ?? [];
-          const primary = hits[0];
-          const lit = Boolean(primary);
-          return (
-            <button
-              key={i}
-              type="button"
-              className={lit ? "hold lit" : "hold"}
-              style={
-                lit
-                  ? {
-                      background: primary.color,
-                      boxShadow: `0 0 12px ${primary.color}99, inset 0 0 0 1px rgba(255,255,255,0.28)`,
-                    }
-                  : undefined
-              }
-              title={lit ? `${primary.colorName || primary.name} ${primary.grade}` : undefined}
-              onClick={() => {
-                onSelectWall();
-                onSelectRoute(primary ? primary.id : null);
-              }}
-            />
-          );
-        })}
+        {!bg && <div className="heat-grid-bg" aria-hidden />}
+        <svg className="heat-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            {blobs.map((b) => (
+              <radialGradient key={`g-${b.key}`} id={`blob-${b.key}`} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor={b.color} stopOpacity="0.95" />
+                <stop offset="55%" stopColor={b.color} stopOpacity="0.45" />
+                <stop offset="100%" stopColor={b.color} stopOpacity="0" />
+              </radialGradient>
+            ))}
+          </defs>
+          {blobs.map((b) => {
+            const r = Math.max(1.2, b.size * 55);
+            return (
+              <circle
+                key={b.key}
+                className="heat-blob"
+                cx={b.x * 100}
+                cy={b.y * 100}
+                r={r}
+                fill={`url(#blob-${b.key})`}
+                onClick={() => {
+                  onSelectWall();
+                  onSelectRoute(b.routeId);
+                }}
+              >
+                <title>{b.label}</title>
+              </circle>
+            );
+          })}
+        </svg>
+        {!blobs.length && <div className="heat-empty">No holds mapped yet</div>}
       </div>
       <div className="board-routes">
-        {routes.map((r) => (
+        {(route ? [route] : routes).map((r) => (
           <button
             key={r.id}
             type="button"

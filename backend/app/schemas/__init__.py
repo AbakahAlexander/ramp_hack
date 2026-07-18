@@ -90,13 +90,40 @@ class WallOut(ORMModel):
 class RouteHoldIn(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [{"sequence_index": 0, "row": 9, "col": 0, "hold_type": "jug", "notes": "start"}]
+            "examples": [
+                {
+                    "sequence_index": 0,
+                    "x": 0.28,
+                    "y": 0.86,
+                    "size": 0.05,
+                    "hold_type": "jug",
+                    "notes": "start",
+                }
+            ]
         }
     )
 
-    sequence_index: int = Field(ge=0, description="Climb order starting at 0")
-    row: int = Field(ge=0, description="Grid row, 0 = top")
-    col: int = Field(ge=0, description="Grid column, 0 = left")
+    sequence_index: int = Field(ge=0, description="Climb order starting at 0 (near bottom)")
+    x: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Normalized horizontal position (0=left, 1=right). Preferred over row/col.",
+    )
+    y: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Normalized vertical position (0=top, 1=bottom).",
+    )
+    size: float | None = Field(
+        default=None,
+        ge=0.01,
+        le=0.5,
+        description="Relative hold diameter for heatmap blobs",
+    )
+    row: int | None = Field(default=None, ge=0, description="Legacy grid row, 0 = top")
+    col: int | None = Field(default=None, ge=0, description="Legacy grid column, 0 = left")
     hold_type: Literal["jug", "crimp", "pinch", "sloper", "foothold", "volume", "pocket", "other"] = Field(
         default="other",
         description="Hold shape/type the setter used",
@@ -104,7 +131,7 @@ class RouteHoldIn(BaseModel):
     notes: str | None = Field(default=None, description="Optional note for this hold")
     cell_index: int | None = Field(
         default=None,
-        description="Optional; if omitted server computes row * grid_cols + col",
+        description="Optional; if omitted server computes from x/y or row/col",
     )
 
 
@@ -114,6 +141,9 @@ class RouteHoldOut(ORMModel):
     cell_index: int
     row: int
     col: int
+    x: float = 0.5
+    y: float = 0.5
+    size: float = 0.05
     hold_type: str
     notes: str | None = None
 

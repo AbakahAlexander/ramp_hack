@@ -32,10 +32,26 @@ def build_holds_for_wall(wall: Wall, hold_inputs: list) -> list[RouteHold]:
     holds: list[RouteHold] = []
     for item in hold_inputs:
         data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
-        row = int(data["row"])
-        col = int(data["col"])
-        if row < 0 or col < 0 or row >= rows or col >= cols:
-            raise ValueError(f"Hold ({row},{col}) outside wall grid {cols}x{rows}")
+
+        if data.get("x") is not None and data.get("y") is not None:
+            x = float(data["x"])
+            y = float(data["y"])
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+                raise ValueError(f"Hold x/y must be in [0,1], got ({x},{y})")
+            row = int(round(y * (rows - 1)))
+            col = int(round(x * (cols - 1)))
+        elif data.get("row") is not None and data.get("col") is not None:
+            row = int(data["row"])
+            col = int(data["col"])
+            if row < 0 or col < 0 or row >= rows or col >= cols:
+                raise ValueError(f"Hold ({row},{col}) outside wall grid {cols}x{rows}")
+            x = (col + 0.5) / cols
+            y = (row + 0.5) / rows
+        else:
+            raise ValueError("Each hold needs x/y (preferred) or row/col")
+
+        size = float(data.get("size") or 0.05)
+        size = max(0.01, min(0.5, size))
         cell = data.get("cell_index")
         if cell is None:
             cell = row * cols + col
@@ -45,6 +61,9 @@ def build_holds_for_wall(wall: Wall, hold_inputs: list) -> list[RouteHold]:
                 cell_index=int(cell),
                 row=row,
                 col=col,
+                x=x,
+                y=y,
+                size=size,
                 hold_type=data.get("hold_type") or "other",
                 notes=data.get("notes"),
             )

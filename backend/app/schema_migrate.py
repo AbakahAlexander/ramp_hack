@@ -27,3 +27,12 @@ def ensure_schema(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE routes ADD COLUMN name VARCHAR(200) DEFAULT ''"))
             if "display_color" not in route_cols:
                 conn.execute(text("ALTER TABLE routes ADD COLUMN display_color VARCHAR(20) DEFAULT '#888888'"))
+
+        if "route_holds" in insp.get_table_names():
+            hold_cols = {c["name"] for c in insp.get_columns("route_holds")}
+            if "x" not in hold_cols:
+                conn.execute(text("ALTER TABLE route_holds ADD COLUMN x FLOAT DEFAULT 0.5"))
+            if "y" not in hold_cols:
+                conn.execute(text("ALTER TABLE route_holds ADD COLUMN y FLOAT DEFAULT 0.5"))
+            if "size" not in hold_cols:
+                conn.execute(text("ALTER TABLE route_holds ADD COLUMN size FLOAT DEFAULT 0.05"))
