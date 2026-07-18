@@ -1,6 +1,6 @@
 export const API_BASE =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
-  (import.meta.env.DEV ? "" : "https://holy-merrill-tormame-aafedec0.koyeb.app");
+  "https://holy-merrill-tormame-aafedec0.koyeb.app";
 
 const STATUS_LABEL = {
   active: "Healthy",

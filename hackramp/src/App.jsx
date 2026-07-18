@@ -13,7 +13,7 @@ import "./hold-board.css";
 import "./insights.css";
 
 const initials = (name) =>
-  name
+  String(name || "?")
     .split(" ")
     .map((part) => part[0])
     .join("");
@@ -323,7 +323,7 @@ function RouteDetails({ route, insight }) {
         </div>
         <div>
           <small>Holds lit</small>
-          <span>{route.cells.length}</span>
+          <span>{route.cells?.length ?? 0}</span>
         </div>
       </div>
 
