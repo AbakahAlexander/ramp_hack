@@ -89,6 +89,16 @@ export async function createRoutesFromImage({ wallId, file }) {
   };
 }
 
+/** Wipe all routes for a fresh demo */
+export async function clearAllRoutes() {
+  const res = await fetch(`${API_BASE}/api/v1/routes/all`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Clear failed (${res.status})`);
+  }
+  return res.json();
+}
+
 /** @deprecated use createRoutesFromImage */
 export async function createRouteFromImage(opts) {
   return createRoutesFromImage(opts);

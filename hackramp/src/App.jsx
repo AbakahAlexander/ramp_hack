@@ -4,6 +4,7 @@ import {
   API_BASE,
   SAMPLE_FEEDBACK,
   analyzeFeedback,
+  clearAllRoutes,
   createRoutesFromImage,
   fetchRoutes,
   fetchWalls,
@@ -424,6 +425,7 @@ export default function App() {
   const [loadError, setLoadError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [sceneXml, setSceneXml] = useState("");
+  const [clearing, setClearing] = useState(false);
 
   const loadInventory = async () => {
     const [apiWalls, apiRoutes] = await Promise.all([fetchWalls(), fetchRoutes()]);
@@ -506,6 +508,24 @@ export default function App() {
     }
   };
 
+  const handleClearDemo = async () => {
+    if (!window.confirm("Clear all routes for a fresh demo? This cannot be undone.")) return;
+    setClearing(true);
+    try {
+      const result = await clearAllRoutes();
+      setRouteData([]);
+      setSelectedId(null);
+      setSceneXml("");
+      setInsightsById({});
+      setGymSummary("");
+      setNotice(`Demo cleared — removed ${result.deleted ?? 0} routes. Ready for a fresh upload.`);
+    } catch (err) {
+      setLoadError(err.message || "Clear failed");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const runAnalyze = async () => {
     setAnalyzing(true);
     setAnalyzeError("");
@@ -541,6 +561,15 @@ export default function App() {
             </div>
           </div>
           <div className="top-actions">
+            <button
+              type="button"
+              className="clear-demo"
+              onClick={handleClearDemo}
+              disabled={clearing || loading}
+              title="Wipe all routes for the next demo"
+            >
+              {clearing ? "Clearing…" : "Clear demo"}
+            </button>
             <button className="add-route" onClick={() => setAddOpen(true)}>
               <Icon name="plus" size={17} />
               Add route

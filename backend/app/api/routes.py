@@ -165,6 +165,23 @@ async def create_routes_from_image(
     )
 
 
+@router.delete(
+    "/all",
+    summary="Clear all routes (demo reset)",
+    response_description="How many routes were deleted",
+    description="Wipes every route (and holds/feedback) so the next demo starts empty. Gym/walls/staff stay.",
+)
+def clear_all_routes_endpoint(
+    gym: Annotated[Gym, Depends(get_demo_gym)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    from app.services.seed import clear_all_routes
+
+    _ = gym  # ensure demo gym exists / seeded
+    deleted = clear_all_routes(db)
+    return {"deleted": deleted, "ok": True}
+
+
 @router.get(
     "/photos/{filename}",
     summary="Serve an uploaded route photo",
