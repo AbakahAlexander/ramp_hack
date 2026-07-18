@@ -2,29 +2,25 @@
 
 ## Run
 
-From this folder (or use the working Vite app under `../wall-heatmap-options` if installs are flaky):
-
 ```bash
+cd hackramp/src
 npm install
 npm run dev
 ```
 
-## Backend contract (next)
+Optional: create `.env` in this folder:
 
-Wire mock `routeData` in `App.jsx` to:
+```
+VITE_API_URL=https://holy-merrill-tormame-aafedec0.koyeb.app
+```
 
-- `GET /api/v1/walls`
-- `GET /api/v1/routes`
+For local API: `VITE_API_URL=http://localhost:8000`
 
-Route objects used by the hold board need:
+## Demo flow
 
-- `id`, `name`, `grade`, `wall` / `wallKey`, `zone`, `color`, `status`
-- `cells: number[]` — grid indices to light (0..cols*rows-1)
+1. Dashboard shows **static** prepopulated routes (not loaded from API inventory).
+2. Paste climber feedback in the feedback box (sample text is preloaded).
+3. Click **Analyze with AI** → `POST /api/v1/insights/analyze`.
+4. Click a route — the detail panel shows **keep / monitor / change out** plus what to change it to.
 
-Wall keys today: `slab` | `steep` | `vertical` (see `data/wallsConfig.js`).
-
-## Notes
-
-- Gym view = lit square hold boards (`components/HoldGrid.jsx`)
-- List + detail panel stay in sync with selected route
-- Still mock data until API is connected
+Backend needs `OPENAI_API_KEY` on Koyeb (or local `.env`). Without a key, the API uses a deterministic fallback so the UI still works.

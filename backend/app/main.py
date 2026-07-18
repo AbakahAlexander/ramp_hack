@@ -63,6 +63,12 @@ def create_app() -> FastAPI:
                 "name": "Dashboard",
                 "description": "Overview, reset planner, coverage, setter insights",
             },
+            {
+                "name": "AI Insights",
+                "description": (
+                    "Paste climber feedback → OpenAI recommends keep / monitor / change_out per route"
+                ),
+            },
         ],
     )
     origins = settings.cors_origin_list or ["*"]

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./crux.db"
     cors_origins: str = "*"
     seed_on_startup: bool = True
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     @property
     def cors_origin_list(self) -> list[str]:

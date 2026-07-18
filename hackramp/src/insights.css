@@ -1,0 +1,215 @@
+.feedback-lab {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid #e5e2d8;
+  border-radius: 10px;
+  background: #fffefa;
+  box-shadow: 0 5px 12px rgba(45, 55, 42, 0.025);
+}
+.feedback-lab-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.feedback-lab-head h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.4px;
+  color: #28342d;
+}
+.feedback-lab-head p {
+  margin: 4px 0 0;
+  color: #778078;
+  font-size: 11px;
+  max-width: 520px;
+  line-height: 1.45;
+}
+.feedback-lab textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid #e1dfd6;
+  border-radius: 8px;
+  padding: 12px 13px;
+  background: #fbfaf6;
+  color: #354139;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+}
+.feedback-lab textarea:focus {
+  border-color: #9bb275;
+  background: #fff;
+}
+.feedback-lab-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.feedback-lab-actions .primary {
+  border: 0;
+  border-radius: 8px;
+  background: #26382d;
+  color: #f7faef;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.feedback-lab-actions .primary:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.feedback-lab-actions .ghost {
+  border: 1px solid #d9ded3;
+  border-radius: 8px;
+  background: transparent;
+  color: #53624e;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.feedback-lab-meta {
+  margin-left: auto;
+  color: #7c857d;
+  font-size: 10px;
+}
+.feedback-lab-meta.error {
+  color: #a15a37;
+}
+.gym-summary {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 8px;
+  background: #f2f7e9;
+  border: 1px solid #d9e5c5;
+  color: #44573a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.gym-summary strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5d7348;
+}
+
+.ai-insight-card {
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 7px;
+  border: 1px solid #e1e9d4;
+  background: #f4f7ed;
+}
+.ai-insight-card.keep {
+  background: #f0f7e6;
+  border-color: #d3e5b4;
+}
+.ai-insight-card.monitor {
+  background: #f7f4e8;
+  border-color: #e5dcb8;
+}
+.ai-insight-card.change_out {
+  background: #faf0e8;
+  border-color: #efd2be;
+}
+.ai-insight-card .ai-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #5d6d59;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ai-rec {
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.ai-rec.keep {
+  color: #557832;
+  background: #e5f0cc;
+}
+.ai-rec.monitor {
+  color: #816d2c;
+  background: #f5ebb4;
+}
+.ai-rec.change_out {
+  color: #a15a37;
+  background: #fae4d3;
+}
+.ai-insight-card h3 {
+  margin: 8px 0 6px;
+  font-size: 13px;
+  letter-spacing: -0.3px;
+  color: #314030;
+}
+.ai-insight-card ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #63705f;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.ai-insight-card .suggested {
+  margin: 10px 0 0;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: rgba(255, 254, 250, 0.75);
+  border: 1px dashed #c9d4b5;
+  color: #44573a;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.ai-insight-card .suggested span {
+  display: block;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6d7f58;
+  margin-bottom: 3px;
+}
+.ai-empty {
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 7px;
+  border: 1px dashed #d9ded3;
+  color: #7a8777;
+  font-size: 10px;
+  line-height: 1.45;
+  background: #fafaf6;
+}
+.route-status.keep {
+  color: #557832;
+  background: #e5f0cc;
+}
+.route-status.monitor {
+  color: #816d2c;
+  background: #f5ebb4;
+}
+.route-status.change-out {
+  color: #a15a37;
+  background: #fae4d3;
+}
+
+@media (max-width: 1160px) {
+  .route-details {
+    display: block;
+  }
+  .view-stage {
+    grid-template-columns: minmax(280px, 0.9fr) minmax(390px, 1.4fr) minmax(220px, 0.75fr);
+  }
+}

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { HoldGrid } from "./components/HoldGrid";
+import { API_BASE, SAMPLE_FEEDBACK, analyzeFeedback } from "./api";
 import "./styles.css";
 import "./hold-board.css";
+import "./insights.css";
 
 const routeData = [
   {
@@ -235,7 +237,15 @@ function Icon({ name, size = 18, stroke = 1.8 }) {
   );
 }
 
-function RouteCard({ route, selected, onClick }) {
+function recommendationLabel(rec) {
+  if (rec === "keep") return "Keep";
+  if (rec === "change_out") return "Change out";
+  if (rec === "monitor") return "Monitor";
+  return null;
+}
+
+function RouteCard({ route, selected, onClick, insight }) {
+  const aiStatus = recommendationLabel(insight?.recommendation);
   return (
     <button className={`route-card ${selected ? "selected" : ""}`} onClick={() => onClick(route.id)}>
       <span className="route-swatch" style={{ background: route.color }} />
@@ -248,7 +258,11 @@ function RouteCard({ route, selected, onClick }) {
           {route.wall} · {route.style}
         </span>
       </span>
-      <span className={`route-status ${route.status.toLowerCase().replace(" ", "-")}`}>{route.status}</span>
+      <span
+        className={`route-status ${(aiStatus || route.status).toLowerCase().replace(" ", "-")}`}
+      >
+        {aiStatus || route.status}
+      </span>
       <Icon name="chevron" size={15} />
     </button>
   );
@@ -275,11 +289,16 @@ function GymHoldView({ routes, selected, selectRoute }) {
   );
 }
 
-function RouteDetails({ route }) {
+function RouteDetails({ route, insight }) {
+  const aiStatus = recommendationLabel(insight?.recommendation);
   return (
     <aside className="route-details">
       <div className="detail-topline">
-        <span className={`route-status ${route.status.toLowerCase().replace(" ", "-")}`}>{route.status}</span>
+        <span
+          className={`route-status ${(aiStatus || route.status).toLowerCase().replace(" ", "-")}`}
+        >
+          {aiStatus || route.status}
+        </span>
         <button aria-label="More actions" className="icon-button">
           <Icon name="dots" />
         </button>
@@ -327,6 +346,41 @@ function RouteDetails({ route }) {
           <span>{route.cells.length}</span>
         </div>
       </div>
+
+      {insight ? (
+        <div className={`ai-insight-card ${insight.recommendation}`}>
+          <div className="ai-label">
+            <span>AI insight</span>
+            <span className={`ai-rec ${insight.recommendation}`}>
+              {recommendationLabel(insight.recommendation)} · {insight.confidence}
+            </span>
+          </div>
+          <h3>{insight.headline}</h3>
+          <ul>
+            {(insight.insights || []).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {insight.suggested_change && (
+            <p className="suggested">
+              <span>What to change to</span>
+              {insight.suggested_change}
+            </p>
+          )}
+          {insight.themes?.length > 0 && (
+            <p className="suggested">
+              <span>Themes</span>
+              {insight.themes.join(" · ")}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="ai-empty">
+          Paste climber feedback above and run <strong>Analyze with AI</strong>. Insights for this
+          route will appear here when you select it.
+        </div>
+      )}
+
       <div className="signal-card">
         <div className="signal-label">
           <span>Community signal</span>
@@ -351,9 +405,6 @@ function RouteDetails({ route }) {
               : "Strong recent engagement with consistent enjoyment."}
         </p>
       </div>
-      <button className="outline-action">
-        Open route details <Icon name="arrow" size={16} />
-      </button>
     </aside>
   );
 }
@@ -364,8 +415,15 @@ export default function App() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("r-102");
   const [notice, setNotice] = useState("");
+  const [feedbackText, setFeedbackText] = useState(SAMPLE_FEEDBACK);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+  const [gymSummary, setGymSummary] = useState("");
+  const [insightsById, setInsightsById] = useState({});
+  const [provider, setProvider] = useState("");
 
   const selectedRoute = routeData.find((route) => route.id === selectedId) ?? routeData[0];
+  const selectedInsight = insightsById[selectedRoute.id];
   const visibleRoutes = useMemo(
     () =>
       routeData.filter((route) =>
@@ -382,7 +440,30 @@ export default function App() {
     setView("gym");
   };
 
-  const addRoute = () => setNotice("Route creation will connect to the backend next.");
+  const addRoute = () => setNotice("Demo uses static prepopulated routes.");
+
+  const runAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeError("");
+    try {
+      const result = await analyzeFeedback(feedbackText, routeData);
+      const map = {};
+      for (const item of result.routes || []) {
+        map[item.route_id] = item;
+      }
+      setInsightsById(map);
+      setGymSummary(result.gym_summary || "");
+      setProvider(result.provider || "");
+      setNotice("AI insights ready — click a route to see keep / change-out guidance.");
+    } catch (err) {
+      setAnalyzeError(err.message || "Analyze failed");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const keepCount = Object.values(insightsById).filter((i) => i.recommendation === "keep").length;
+  const changeCount = Object.values(insightsById).filter((i) => i.recommendation === "change_out").length;
 
   return (
     <main className="app-shell">
@@ -463,7 +544,10 @@ export default function App() {
           <div>
             <p className="eyebrow">ROUTE INVENTORY</p>
             <h1>What’s on the wall</h1>
-            <p className="subtitle">Staff dashboard with lit hold boards for each active route.</p>
+            <p className="subtitle">
+              Static demo routes — paste climber feedback, run AI, then click a route for keep /
+              change-out guidance.
+            </p>
           </div>
           <div className="as-of">
             <span className="live-dot" />
@@ -476,36 +560,68 @@ export default function App() {
             <span>Active routes</span>
             <strong>{routeData.length}</strong>
             <small>
-              <em>+2</em> this cycle
+              <em>static demo</em>
             </small>
           </div>
           <div className="metric">
-            <span>Need review</span>
-            <strong>{routeData.filter((r) => r.status === "Review").length}</strong>
+            <span>Change out</span>
+            <strong>{changeCount || routeData.filter((r) => r.status === "Review").length}</strong>
             <small>
-              <em className="warn">sharp / sandbag</em>
+              <em className="warn">{changeCount ? "from AI" : "pre-AI flags"}</em>
             </small>
           </div>
           <div className="metric">
-            <span>Feedback this week</span>
-            <strong>{routeData.reduce((n, r) => n + r.feedback, 0)}</strong>
+            <span>Keep</span>
+            <strong>{keepCount || "—"}</strong>
             <small>
-              <em>+12%</em> from last week
+              <em>{keepCount ? "AI keepers" : "run analyze"}</em>
             </small>
           </div>
           <div className="coverage-note">
             <span className="coverage-icon">
-              <Icon name="map" />
+              <Icon name="chart" />
             </span>
             <div>
-              <strong>Coverage gap: easy slab</strong>
-              <small>Only one V1 on Slab Wall</small>
+              <strong>{gymSummary ? "AI gym summary ready" : "Paste feedback to generate insights"}</strong>
+              <small>{provider ? `Provider: ${provider}` : `API: ${API_BASE}`}</small>
             </div>
-            <button>
-              View plan <Icon name="arrow" size={15} />
-            </button>
           </div>
         </div>
+
+        <section className="feedback-lab" aria-label="Climber feedback for AI">
+          <div className="feedback-lab-head">
+            <div>
+              <h2>Climber feedback → AI insights</h2>
+              <p>
+                Paste survey comments or floor notes. The model maps them onto the static routes and
+                recommends what to keep, what to strip, and what to set next.
+              </p>
+            </div>
+          </div>
+          <textarea
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            placeholder="Paste climber feedback here…"
+            aria-label="Climber feedback"
+          />
+          <div className="feedback-lab-actions">
+            <button className="primary" type="button" disabled={analyzing} onClick={runAnalyze}>
+              {analyzing ? "Analyzing…" : "Analyze with AI"}
+            </button>
+            <button className="ghost" type="button" onClick={() => setFeedbackText(SAMPLE_FEEDBACK)}>
+              Load sample feedback
+            </button>
+            <span className={`feedback-lab-meta ${analyzeError ? "error" : ""}`}>
+              {analyzeError || (Object.keys(insightsById).length ? `${Object.keys(insightsById).length} routes scored` : "Waiting for analysis")}
+            </span>
+          </div>
+          {gymSummary && (
+            <div className="gym-summary">
+              <strong>Gym priorities</strong>
+              {gymSummary}
+            </div>
+          )}
+        </section>
 
         <div className="content-card">
           <div className="card-toolbar">
@@ -561,6 +677,7 @@ export default function App() {
                       route={route}
                       selected={selectedId === route.id}
                       onClick={selectRoute}
+                      insight={insightsById[route.id]}
                     />
                   ))
                 ) : (
@@ -573,7 +690,7 @@ export default function App() {
               selected={selectedId}
               selectRoute={selectRoute}
             />
-            <RouteDetails route={selectedRoute} />
+            <RouteDetails route={selectedRoute} insight={selectedInsight} />
           </div>
         </div>
         <footer>Summit Lab · Staff workspace · Hold boards wired to route inventory</footer>
