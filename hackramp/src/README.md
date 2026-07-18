@@ -26,3 +26,10 @@ Backend auto-detects every colored line → returns:
 - Editable `<wall>` **scene XML** (positions, shapes, colors)
 
 The dashboard draws an independent **cartoon SVG** from that XML (not a photo highlight). Optimize later by rewriting the XML.
+
+## Local backend (no redeploy)
+
+1. Start API: `cd backend && uvicorn app.main:app --reload --port 8000`
+2. Start UI: `cd hackramp/src && npm run dev`
+
+Vite proxies `/api` → `http://127.0.0.1:8000` by default.

@@ -15,7 +15,7 @@ export function holdShape(type) {
   return SHAPE_BY_TYPE[(type || "other").toLowerCase()] || "circle";
 }
 
-/** Build <wall> XML from dashboard routes (0–1 holds → 0–100 viewBox). */
+/** Build wall XML from dashboard routes (0–1 holds → 0–100 viewBox). */
 export function buildWallXml(routes, { wallName = "Wall", wallId = "" } = {}) {
   const routeXml = (routes || [])
     .map((r) => {
@@ -25,13 +25,34 @@ export function buildWallXml(routes, { wallName = "Wall", wallId = "" } = {}) {
           const wh = Math.max(1.5, Math.min(18, size * 55));
           const shape = h.shape || holdShape(h.hold_type);
           const notes = h.notes ? ` notes="${escapeXml(h.notes)}"` : "";
-          return `    <hold seq="${h.sequence_index ?? 0}" x="${(Number(h.x) * 100).toFixed(2)}" y="${(Number(h.y) * 100).toFixed(2)}" w="${wh.toFixed(2)}" h="${wh.toFixed(2)}" shape="${shape}" type="${h.hold_type || "other}"${notes}/>`;
+          return (
+            `    <hold seq="${h.sequence_index ?? 0}"` +
+            ` x="${(Number(h.x) * 100).toFixed(2)}"` +
+            ` y="${(Number(h.y) * 100).toFixed(2)}"` +
+            ` w="${wh.toFixed(2)}" h="${wh.toFixed(2)}"` +
+            ` shape="${shape}" type="${h.hold_type || "other"}"${notes}/>`
+          );
         })
         .join("\n");
-      return `  <route id="${escapeXml(r.id || "")}" name="${escapeXml(r.name || r.colorName || "Route")}" color="${escapeXml(r.colorName || r.color_identifier || "")}" hex="${escapeXml(r.color || "#888")}" grade="${escapeXml(r.grade || "V?")}">\n${holds}\n  </route>`;
+      return (
+        `  <route id="${escapeXml(r.id || "")}"` +
+        ` name="${escapeXml(r.name || r.colorName || "Route")}"` +
+        ` color="${escapeXml(r.colorName || r.color_identifier || "")}"` +
+        ` hex="${escapeXml(r.color || "#888")}"` +
+        ` grade="${escapeXml(r.grade || "V?")}">\n` +
+        `${holds}\n` +
+        "  </" +
+        "route>"
+      );
     })
     .join("\n");
-  return `<?xml version="1.0"?>\n<wall name="${escapeXml(wallName)}" id="${escapeXml(wallId)}" viewBox="0 0 100 100">\n${routeXml}\n</wall>\n`;
+
+  // Avoid `</…>` / `<?` in template literals — Vite's JS lexer treats them as JSX.
+  const decl = "<" + "?xml version=\"1.0\"?>";
+  const open =
+    `<wall name="${escapeXml(wallName)}" id="${escapeXml(wallId)}" viewBox="0 0 100 100">`;
+  const close = "</" + "wall>";
+  return `${decl}\n${open}\n${routeXml}\n${close}\n`;
 }
 
 export function parseWallXml(xmlText) {

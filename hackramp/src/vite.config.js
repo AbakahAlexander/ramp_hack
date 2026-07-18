@@ -1,10 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Local FE → proxy /api to backend so you can iterate UI without redeploying.
-// Override with VITE_PROXY_TARGET=http://127.0.0.1:8000 for a local API.
-const proxyTarget =
-  process.env.VITE_PROXY_TARGET || "https://holy-merrill-tormame-aafedec0.koyeb.app";
+// Local FE proxies /api → local backend (no Koyeb redeploy needed for API work).
+// Override: VITE_PROXY_TARGET=https://your-koyeb-app.koyeb.app
+const proxyTarget = process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000";
 
 export default defineConfig({
   plugins: [react()],
@@ -15,7 +14,6 @@ export default defineConfig({
       "/api": {
         target: proxyTarget,
         changeOrigin: true,
-        secure: true,
       },
     },
   },
