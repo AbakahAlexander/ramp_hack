@@ -9,7 +9,6 @@ from app.config import get_settings
 from app.database import Base, SessionLocal, engine
 from app.services.seed import seed_if_empty
 
-# Ensure models are registered on metadata
 import app.models  # noqa: F401
 
 
@@ -32,13 +31,39 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=__version__,
         description=(
-            "Crux API — staff dashboard and climber QR feedback for climbing-gym routesetting.\n\n"
-            "Hackathon MVP: **no auth** — all endpoints are open. Demo gym is seeded on startup."
+            "## Crux API\n\n"
+            "Staff dashboard + climber QR feedback for climbing-gym routesetting.\n\n"
+            "**Hackathon MVP:** no auth — all endpoints are open.\n\n"
+            "### Quick start for frontend\n"
+            "1. `GET /api/v1/seed-status` — confirm demo data is loaded\n"
+            "2. `GET /api/v1/dashboard/overview` — staff home screen\n"
+            "3. `GET /api/v1/routes` — inventory\n"
+            "4. Climber loop: `GET /api/v1/public/routes/{id}` → "
+            "`POST /api/v1/public/routes/{id}/feedback`\n\n"
+            "Demo gym **Summit Lab Climbing** is seeded automatically on startup "
+            "(walls, routes, feedback, issues)."
         ),
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        openapi_tags=[
+            {"name": "Health", "description": "Liveness check for Koyeb / load balancers"},
+            {"name": "Meta", "description": "Seed / data sanity checks"},
+            {"name": "Gym & Walls", "description": "Gym profile and wall inventory"},
+            {"name": "Staff", "description": "Staff and setter list (for route attribution)"},
+            {"name": "Routes", "description": "Route CRUD, filters, and health metrics"},
+            {"name": "Feedback", "description": "Staff view of climber feedback"},
+            {
+                "name": "Public (climber QR)",
+                "description": "Unauthenticated mobile/QR climber flow",
+            },
+            {"name": "Issues", "description": "Safety and hold issue queue"},
+            {
+                "name": "Dashboard",
+                "description": "Overview, reset planner, coverage, setter insights",
+            },
+        ],
     )
     origins = settings.cors_origin_list or ["*"]
     application.add_middleware(
@@ -50,7 +75,13 @@ def create_app() -> FastAPI:
     )
     application.include_router(api_router)
 
-    @application.get("/health", tags=["Health"])
+    @application.get(
+        "/health",
+        tags=["Health"],
+        summary="Health check",
+        description="Returns ok when the API process is up. Used by Koyeb health checks.",
+        response_description="Status and API version",
+    )
     def health():
         return {"status": "ok", "version": __version__}
 

@@ -31,17 +31,30 @@ def _get_route_for_gym(db: Session, route_id: str, gym_id: str) -> Route:
     return route
 
 
-@router.get("", response_model=RouteListOut, summary="List / filter routes")
+@router.get(
+    "",
+    response_model=RouteListOut,
+    summary="List / filter routes",
+    response_description="Routes with computed health metrics",
+    description=(
+        "Staff route inventory. Each item includes `health` (sends, perceived grade, tags, review_score). "
+        "Filter by status, wall, zone, grade, style, setter, or free-text search on color/notes."
+    ),
+)
 def list_routes(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
-    status: str | None = None,
-    wall_id: str | None = None,
-    zone: str | None = None,
-    grade: str | None = None,
-    style: str | None = None,
-    setter_id: str | None = None,
-    include_archived: bool = False,
+    status: str | None = Query(
+        default=None,
+        description="active | needs_review | scheduled_for_strip | archived",
+        examples=["active"],
+    ),
+    wall_id: str | None = Query(default=None, description="Filter to one wall UUID"),
+    zone: str | None = Query(default=None, description="Filter by wall zone, e.g. Front"),
+    grade: str | None = Query(default=None, description="Assigned grade, e.g. V3"),
+    style: str | None = Query(default=None, description="Style tag substring, e.g. slab"),
+    setter_id: str | None = Query(default=None, description="Staff UUID of a setter"),
+    include_archived: bool = Query(default=False, description="Include archived routes"),
     q: str | None = Query(default=None, description="Search color identifier or notes"),
 ):
     wall_ids = _gym_walls(db, gym.id)
@@ -74,7 +87,17 @@ def list_routes(
     return RouteListOut(items=items, total=len(items))
 
 
-@router.post("", response_model=RouteDetailOut, status_code=201, summary="Create a route")
+@router.post(
+    "",
+    response_model=RouteDetailOut,
+    status_code=201,
+    summary="Create a route",
+    response_description="Created route with health (usually empty until feedback arrives)",
+    description=(
+        "Create a new route on a wall. First GET `/walls` and `/staff?setters_only=true` for IDs. "
+        "`photo_url` is an optional image link (no file upload)."
+    ),
+)
 def create_route(
     payload: RouteCreate,
     gym: Annotated[Gym, Depends(get_demo_gym)],
@@ -114,7 +137,13 @@ def create_route(
     return route_to_detail(route, db)
 
 
-@router.get("/{route_id}", response_model=RouteDetailOut)
+@router.get(
+    "/{route_id}",
+    response_model=RouteDetailOut,
+    summary="Get route detail",
+    response_description="Full route record + health signals",
+    description="Staff detail view for one route, including feedback-derived health metrics.",
+)
 def get_route(
     route_id: str,
     gym: Annotated[Gym, Depends(get_demo_gym)],
@@ -124,7 +153,13 @@ def get_route(
     return route_to_detail(route, db)
 
 
-@router.patch("/{route_id}", response_model=RouteDetailOut)
+@router.patch(
+    "/{route_id}",
+    response_model=RouteDetailOut,
+    summary="Update a route",
+    response_description="Updated route detail",
+    description="Partial update. Only send fields you want to change.",
+)
 def update_route(
     route_id: str,
     payload: RouteUpdate,
@@ -155,7 +190,13 @@ def update_route(
     return route_to_detail(route, db)
 
 
-@router.patch("/{route_id}/status", response_model=RouteDetailOut)
+@router.patch(
+    "/{route_id}/status",
+    response_model=RouteDetailOut,
+    summary="Change route status only",
+    response_description="Route with new status",
+    description="Shortcut to move a route between active / needs_review / scheduled_for_strip / archived.",
+)
 def update_status(
     route_id: str,
     payload: RouteStatusUpdate,

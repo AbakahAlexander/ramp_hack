@@ -12,7 +12,15 @@ from app.schemas import StaffUserOut
 router = APIRouter(prefix="/staff", tags=["Staff"])
 
 
-@router.get("", response_model=list[StaffUserOut], summary="List gym staff / setters")
+@router.get(
+    "",
+    response_model=list[StaffUserOut],
+    summary="List staff / setters",
+    response_description="Staff profiles for the demo gym",
+    description=(
+        "List staff members. Pass `setters_only=true` to get IDs for `setter_ids` when creating a route."
+    ),
+)
 def list_staff(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],

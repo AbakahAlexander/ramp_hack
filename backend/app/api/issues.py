@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -26,12 +26,18 @@ def _issue_for_gym(db: Session, issue_id: str, gym_id: str) -> IssueReport:
     return issue
 
 
-@router.get("", response_model=list[IssueOut], summary="List issue reports")
+@router.get(
+    "",
+    response_model=list[IssueOut],
+    summary="List issue reports",
+    response_description="Safety / hold issues for staff follow-up",
+    description="Queue of issue reports. Filter by `status` or `route_id`.",
+)
 def list_issues(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
-    status: str | None = None,
-    route_id: str | None = None,
+    status: str | None = Query(default=None, description="open | acknowledged | resolved"),
+    route_id: str | None = Query(default=None, description="Limit to one route"),
 ):
     issues = (
         db.query(IssueReport)
@@ -49,7 +55,14 @@ def list_issues(
     return filtered
 
 
-@router.post("/routes/{route_id}", response_model=IssueOut, status_code=201)
+@router.post(
+    "/routes/{route_id}",
+    response_model=IssueOut,
+    status_code=201,
+    summary="Report an issue on a route",
+    response_description="Created issue",
+    description="Floor staff (or anyone) logs a safety/hold issue against a route.",
+)
 def create_issue(
     route_id: str,
     payload: IssueCreate,
@@ -76,7 +89,13 @@ def create_issue(
     return issue
 
 
-@router.patch("/{issue_id}", response_model=IssueOut)
+@router.patch(
+    "/{issue_id}",
+    response_model=IssueOut,
+    summary="Update an issue",
+    response_description="Updated issue",
+    description="Acknowledge or resolve an issue, optionally assign an owner.",
+)
 def update_issue(
     issue_id: str,
     payload: IssueUpdate,

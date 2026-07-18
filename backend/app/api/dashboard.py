@@ -27,7 +27,20 @@ from app.services.metrics import (
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
-@router.get("/overview", response_model=OverviewOut, summary="Staff home: what needs attention?")
+@router.get(
+    "/overview",
+    response_model=OverviewOut,
+    summary="Staff home — what needs attention?",
+    response_description="Wall health, review queue, recent feedback, upcoming strips",
+    description=(
+        "Main dashboard payload for the staff UI.\n\n"
+        "- `wall_health` — grade/style balance + gap messages\n"
+        "- `routes_needing_review` — high review_score or needs_review status\n"
+        "- `recent_feedback` — latest climber comments/tags\n"
+        "- `upcoming_strips` — scheduled_for_strip or reset_date set\n"
+        "- `open_issue_count` — unresolved safety issues"
+    ),
+)
 def overview(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
@@ -78,11 +91,20 @@ def overview(
     )
 
 
-@router.get("/reset-queue", response_model=list[ResetQueueItem], summary="Reset planner")
+@router.get(
+    "/reset-queue",
+    response_model=list[ResetQueueItem],
+    summary="Reset planner queue",
+    response_description="Routes ranked by review_score with human-readable reasons",
+    description=(
+        "Ranks active routes for the next setting cycle. "
+        "This is a **prompt for staff judgment**, not an automatic strip decision."
+    ),
+)
 def reset_queue(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
-    limit: int = Query(default=20, le=100),
+    limit: int = Query(default=20, le=100, description="Max items to return"),
 ):
     wall_ids = [w.id for w in db.query(Wall).filter(Wall.gym_id == gym.id).all()]
     routes = (
@@ -106,7 +128,13 @@ def reset_queue(
     return items[:limit]
 
 
-@router.get("/coverage", response_model=CoverageMatrixOut, summary="Wall × grade × style coverage")
+@router.get(
+    "/coverage",
+    response_model=CoverageMatrixOut,
+    summary="Wall × grade × style coverage",
+    response_description="Sparse coverage cells plus gap messages",
+    description="Helps plan an inclusive setting day by showing where grades/styles are missing.",
+)
 def coverage(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
@@ -114,7 +142,16 @@ def coverage(
     return build_coverage_matrix(db, gym.id)
 
 
-@router.get("/setter-insights", response_model=list[SetterInsightOut], summary="Setter coaching view")
+@router.get(
+    "/setter-insights",
+    response_model=list[SetterInsightOut],
+    summary="Setter coaching insights",
+    response_description="Per-setter contextual metrics (not a public ranking)",
+    description=(
+        "Internal coaching view. Compares grade feel and mix in context. "
+        "There is **no single best-setter score**."
+    ),
+)
 def setter_insights(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],

@@ -35,7 +35,15 @@ def _route_in_gym(db: Session, route_id: str, gym_id: str | None = None) -> Rout
     "/public/routes/{route_id}/feedback",
     response_model=FeedbackPublicOut,
     status_code=201,
-    summary="Climber QR feedback (no auth)",
+    summary="Submit climber QR feedback",
+    response_description="Confirmation payload for the mobile UI",
+    description=(
+        "**No auth.** Called from the climber mobile/QR flow.\n\n"
+        "1. GET `/public/routes/{id}` for the route card + tag vocabulary\n"
+        "2. POST here with outcome + optional grade/enjoyment/tags\n\n"
+        "Tags like `sharp` automatically open an issue for staff."
+    ),
+    tags=["Public (climber QR)"],
 )
 def submit_public_feedback(
     route_id: str,
@@ -91,7 +99,9 @@ def submit_public_feedback(
 @router.get(
     "/routes/{route_id}/feedback",
     response_model=list[FeedbackOut],
-    summary="List feedback for a route",
+    summary="List feedback for a route (staff)",
+    response_description="Newest feedback first (contributor ids not exposed)",
+    description="Staff view of climber feedback on one route. Individual climber identity stays private.",
 )
 def list_route_feedback(
     route_id: str,

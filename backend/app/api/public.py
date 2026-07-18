@@ -11,7 +11,16 @@ from app.schemas import PublicRouteCard
 router = APIRouter(prefix="/public", tags=["Public (climber QR)"])
 
 
-@router.get("/routes/{route_id}", response_model=PublicRouteCard, summary="Route card for QR / mobile flow")
+@router.get(
+    "/routes/{route_id}",
+    response_model=PublicRouteCard,
+    summary="Climber route card (QR landing)",
+    response_description="Minimal route info + tag vocabulary for the feedback form",
+    description=(
+        "**No auth.** Opened when a climber scans the placard QR code.\n\n"
+        "Frontend should then POST to `/api/v1/public/routes/{route_id}/feedback`."
+    ),
+)
 def public_route_card(
     route_id: str,
     db: Annotated[Session, Depends(get_db)],
