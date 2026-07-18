@@ -49,6 +49,9 @@ class WallCreate(BaseModel):
                     "name": "Cave Overhang",
                     "zone": "Back",
                     "angle_type": "overhang",
+                    "wall_key": "steep",
+                    "grid_cols": 8,
+                    "grid_rows": 10,
                     "is_active": True,
                 }
             ]
@@ -62,6 +65,13 @@ class WallCreate(BaseModel):
         description="Wall angle/type: slab | vertical | overhang | cave",
         examples=["slab"],
     )
+    wall_key: str = Field(
+        default="",
+        description="Stable UI board key used by the hold grid (slab | steep | vertical)",
+        examples=["slab"],
+    )
+    grid_cols: int = Field(default=8, ge=1, le=40, description="Hold board columns")
+    grid_rows: int = Field(default=10, ge=1, le=40, description="Hold board rows")
     is_active: bool = Field(default=True, description="Inactive walls are hidden from default lists")
 
 
@@ -71,7 +81,41 @@ class WallOut(ORMModel):
     name: str = Field(description="Wall name")
     zone: str = Field(description="Gym zone / section")
     angle_type: str = Field(description="slab | vertical | overhang | cave")
+    wall_key: str = Field(description="UI board key")
+    grid_cols: int = Field(description="Columns on the digital hold board")
+    grid_rows: int = Field(description="Rows on the digital hold board")
     is_active: bool = Field(description="Whether the wall is in use")
+
+
+class RouteHoldIn(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"sequence_index": 0, "row": 9, "col": 0, "hold_type": "jug", "notes": "start"}]
+        }
+    )
+
+    sequence_index: int = Field(ge=0, description="Climb order starting at 0")
+    row: int = Field(ge=0, description="Grid row, 0 = top")
+    col: int = Field(ge=0, description="Grid column, 0 = left")
+    hold_type: Literal["jug", "crimp", "pinch", "sloper", "foothold", "volume", "pocket", "other"] = Field(
+        default="other",
+        description="Hold shape/type the setter used",
+    )
+    notes: str | None = Field(default=None, description="Optional note for this hold")
+    cell_index: int | None = Field(
+        default=None,
+        description="Optional; if omitted server computes row * grid_cols + col",
+    )
+
+
+class RouteHoldOut(ORMModel):
+    id: str
+    sequence_index: int
+    cell_index: int
+    row: int
+    col: int
+    hold_type: str
+    notes: str | None = None
 
 
 class RouteCreate(BaseModel):
@@ -80,25 +124,38 @@ class RouteCreate(BaseModel):
             "examples": [
                 {
                     "wall_id": "paste-a-wall-id-from-GET-/walls",
-                    "color_identifier": "Teal",
-                    "assigned_grade": "V2",
+                    "name": "Reach Check",
+                    "color_identifier": "Yellow",
+                    "display_color": "#e8c84a",
+                    "assigned_grade": "V3",
                     "grade_system": "V-scale",
                     "styles": ["slab", "technical"],
                     "set_date": "2026-07-18",
                     "reset_date": None,
-                    "photo_url": "https://placehold.co/400x600/png?text=Teal+V2",
+                    "photo_url": "https://placehold.co/400x600/png?text=Yellow+V3",
                     "setter_ids": ["paste-a-staff-id-from-GET-/staff"],
                     "notes": "Crux on the second hold",
                     "status": "active",
+                    "holds": [
+                        {"sequence_index": 0, "row": 9, "col": 0, "hold_type": "jug"},
+                        {"sequence_index": 1, "row": 8, "col": 1, "hold_type": "crimp"},
+                        {"sequence_index": 2, "row": 7, "col": 1, "hold_type": "pinch"},
+                    ],
                 }
             ]
         }
     )
 
     wall_id: str = Field(description="Wall UUID from GET /api/v1/walls")
+    name: str = Field(default="", description="Route display name", examples=["Reach Check"])
     color_identifier: str = Field(
         description="Hold color or tape identifier on the placard",
         examples=["Yellow"],
+    )
+    display_color: str = Field(
+        default="#888888",
+        description="Hex color for lighting holds on the board",
+        examples=["#e8c84a"],
     )
     assigned_grade: str = Field(description="Setter-assigned grade", examples=["V3"])
     grade_system: str = Field(default="V-scale", description="Grade system label", examples=["V-scale"])
@@ -127,6 +184,10 @@ class RouteCreate(BaseModel):
         default="active",
         description="Lifecycle status",
     )
+    holds: list[RouteHoldIn] = Field(
+        default_factory=list,
+        description="Ordered hold sequence on the wall grid (what the gym owner / setter enters)",
+    )
 
 
 class RouteUpdate(BaseModel):
@@ -144,7 +205,9 @@ class RouteUpdate(BaseModel):
     )
 
     wall_id: str | None = Field(default=None, description="Move route to another wall")
+    name: str | None = None
     color_identifier: str | None = None
+    display_color: str | None = None
     assigned_grade: str | None = None
     grade_system: str | None = None
     styles: list[str] | None = Field(default=None, description="Replaces the full style list")
@@ -154,6 +217,10 @@ class RouteUpdate(BaseModel):
     setter_ids: list[str] | None = Field(default=None, description="Replaces setter list")
     notes: str | None = None
     status: Literal["active", "needs_review", "scheduled_for_strip", "archived"] | None = None
+    holds: list[RouteHoldIn] | None = Field(
+        default=None,
+        description="If provided, replaces the full hold sequence",
+    )
 
 
 class RouteStatusUpdate(BaseModel):
@@ -217,8 +284,10 @@ class RouteHealth(BaseModel):
 class RouteOut(ORMModel):
     id: str = Field(description="Route UUID — use this in QR URLs")
     wall_id: str
+    name: str = Field(description="Display name")
     photo_url: str | None = Field(description="Optional photo link")
     color_identifier: str
+    display_color: str = Field(description="Hex color for board lighting")
     assigned_grade: str
     grade_system: str
     styles: list[str]
@@ -227,6 +296,8 @@ class RouteOut(ORMModel):
     reset_date: date | None
     notes: str | None
     setters: list[SetterBrief]
+    holds: list[RouteHoldOut] = Field(description="Ordered holds: sequence, type, row/col/cell")
+    cells: list[int] = Field(description="Convenience: cell indices for lighting the board")
     created_at: datetime
     updated_at: datetime
 
@@ -234,7 +305,10 @@ class RouteOut(ORMModel):
 class RouteDetailOut(RouteOut):
     health: RouteHealth = Field(description="Computed engagement / grade / issue signals")
     wall_name: str | None = Field(default=None, description="Denormalized wall name")
+    wall_key: str | None = Field(default=None, description="UI board key")
     zone: str | None = Field(default=None, description="Denormalized wall zone")
+    grid_cols: int | None = Field(default=None)
+    grid_rows: int | None = Field(default=None)
 
 
 class RouteListOut(BaseModel):

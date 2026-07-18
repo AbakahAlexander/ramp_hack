@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, String, Table, Text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +19,17 @@ class RouteStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class HoldType(str, Enum):
+    JUG = "jug"
+    CRIMP = "crimp"
+    PINCH = "pinch"
+    SLOPER = "sloper"
+    FOOTHOLD = "foothold"
+    VOLUME = "volume"
+    POCKET = "pocket"
+    OTHER = "other"
+
+
 route_setters = Table(
     "route_setters",
     Base.metadata,
@@ -32,11 +43,13 @@ class Route(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     wall_id: Mapped[str] = mapped_column(String(36), ForeignKey("walls.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     color_identifier: Mapped[str] = mapped_column(String(80), nullable=False)
+    display_color: Mapped[str] = mapped_column(String(20), default="#888888")
     assigned_grade: Mapped[str] = mapped_column(String(40), nullable=False)
     grade_system: Mapped[str] = mapped_column(String(50), default="V-scale")
-    styles: Mapped[str] = mapped_column(Text, default="")  # comma-separated for SQLite simplicity
+    styles: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(40), default=RouteStatus.ACTIVE.value, index=True)
     set_date: Mapped[date] = mapped_column(Date, nullable=False)
     reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -46,6 +59,13 @@ class Route(Base):
 
     wall = relationship("Wall", back_populates="routes")
     setters = relationship("StaffUser", secondary=route_setters, lazy="joined")
+    holds = relationship(
+        "RouteHold",
+        back_populates="route",
+        cascade="all, delete-orphan",
+        order_by="RouteHold.sequence_index",
+        lazy="joined",
+    )
     feedback = relationship("Feedback", back_populates="route", cascade="all, delete-orphan")
     issues = relationship("IssueReport", back_populates="route", cascade="all, delete-orphan")
 
@@ -54,3 +74,24 @@ class Route(Base):
         if not self.styles:
             return []
         return [s.strip() for s in self.styles.split(",") if s.strip()]
+
+    @property
+    def cell_indices(self) -> list[int]:
+        return [h.cell_index for h in self.holds]
+
+
+class RouteHold(Base):
+    """One hold on a route, in climb order, placed on the wall grid."""
+
+    __tablename__ = "route_holds"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    route_id: Mapped[str] = mapped_column(String(36), ForeignKey("routes.id"), nullable=False, index=True)
+    sequence_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = start
+    cell_index: Mapped[int] = mapped_column(Integer, nullable=False)  # row-major index on wall grid
+    row: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = top
+    col: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = left
+    hold_type: Mapped[str] = mapped_column(String(40), default=HoldType.OTHER.value)
+    notes: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    route = relationship("Route", back_populates="holds")

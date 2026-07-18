@@ -34,6 +34,9 @@ class Wall(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     zone: Mapped[str] = mapped_column(String(120), default="")
     angle_type: Mapped[str] = mapped_column(String(80), default="vertical")  # slab, vertical, overhang, cave
+    wall_key: Mapped[str] = mapped_column(String(40), default="")  # FE board key: slab | steep | vertical
+    grid_cols: Mapped[int] = mapped_column(Integer, default=8)
+    grid_rows: Mapped[int] = mapped_column(Integer, default=10)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

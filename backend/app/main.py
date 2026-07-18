@@ -7,7 +7,8 @@ from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
-from app.services.seed import seed_if_empty
+from app.schema_migrate import ensure_schema
+from app.services.seed import clear_all_routes, seed_if_empty
 
 import app.models  # noqa: F401
 
@@ -15,11 +16,14 @@ import app.models  # noqa: F401
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
     settings = get_settings()
     if settings.seed_on_startup:
         db = SessionLocal()
         try:
             seed_if_empty(db)
+            if settings.clear_routes_on_startup:
+                clear_all_routes(db)
         finally:
             db.close()
     yield
@@ -35,13 +39,13 @@ def create_app() -> FastAPI:
             "Staff dashboard + climber QR feedback for climbing-gym routesetting.\n\n"
             "**Hackathon MVP:** no auth — all endpoints are open.\n\n"
             "### Quick start for frontend\n"
-            "1. `GET /api/v1/seed-status` — confirm demo data is loaded\n"
-            "2. `GET /api/v1/dashboard/overview` — staff home screen\n"
-            "3. `GET /api/v1/routes` — inventory\n"
+            "1. `GET /api/v1/seed-status` — confirm demo gym/walls are loaded\n"
+            "2. `POST /api/v1/routes/from-image` — upload a photo → AI grid holds\n"
+            "3. `GET /api/v1/routes` — inventory (empty until you add routes)\n"
             "4. Climber loop: `GET /api/v1/public/routes/{id}` → "
             "`POST /api/v1/public/routes/{id}/feedback`\n\n"
-            "Demo gym **Summit Lab Climbing** is seeded automatically on startup "
-            "(walls, routes, feedback, issues)."
+            "Demo gym **Summit Lab Climbing** seeds walls + staff only — "
+            "no hardcoded routes."
         ),
         lifespan=lifespan,
         docs_url="/docs",

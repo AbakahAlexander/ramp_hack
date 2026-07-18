@@ -1,126 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HoldGrid } from "./components/HoldGrid";
-import { API_BASE, SAMPLE_FEEDBACK, analyzeFeedback } from "./api";
+import {
+  API_BASE,
+  SAMPLE_FEEDBACK,
+  analyzeFeedback,
+  createRouteFromImage,
+  fetchRoutes,
+  fetchWalls,
+  mapApiRoute,
+} from "./api";
 import "./styles.css";
 import "./hold-board.css";
 import "./insights.css";
-
-const routeData = [
-  {
-    id: "r-101",
-    name: "Soft Landing",
-    identifier: "Green holds",
-    grade: "V1",
-    wall: "Slab Wall",
-    wallKey: "slab",
-    zone: "Front",
-    setter: "Jordan Setter",
-    set: "Jun 28",
-    age: "20d",
-    style: "Slab",
-    rating: 4.4,
-    feedback: 22,
-    status: "Healthy",
-    color: "#3dba6e",
-    colorName: "Green",
-    cells: [75, 67, 59, 51, 44, 36, 28, 20],
-  },
-  {
-    id: "r-102",
-    name: "Reach Check",
-    identifier: "Yellow holds",
-    grade: "V3",
-    wall: "Slab Wall",
-    wallKey: "slab",
-    zone: "Front",
-    setter: "Jordan Setter",
-    set: "Jul 13",
-    age: "5d",
-    style: "Technical",
-    rating: 3.8,
-    feedback: 14,
-    status: "Review",
-    color: "#e8c84a",
-    colorName: "Yellow",
-    cells: [72, 65, 57, 50, 42, 34, 27, 19, 11],
-  },
-  {
-    id: "r-103",
-    name: "Cave Crusher",
-    identifier: "Red holds",
-    grade: "V5",
-    wall: "Steep Wall",
-    wallKey: "steep",
-    zone: "Cave",
-    setter: "Sam Setter",
-    set: "Jun 13",
-    age: "35d",
-    style: "Powerful",
-    rating: 3.6,
-    feedback: 41,
-    status: "Review",
-    color: "#e24b4b",
-    colorName: "Red",
-    cells: [73, 66, 58, 49, 41, 33, 25, 17, 10],
-  },
-  {
-    id: "r-104",
-    name: "Blue Hour",
-    identifier: "Blue holds",
-    grade: "V7",
-    wall: "Steep Wall",
-    wallKey: "steep",
-    zone: "Cave",
-    setter: "Sam Setter",
-    set: "Jul 6",
-    age: "12d",
-    style: "Coordination",
-    rating: 4.6,
-    feedback: 19,
-    status: "Healthy",
-    color: "#3b82f6",
-    colorName: "Blue",
-    cells: [76, 68, 60, 53, 45, 37, 29, 21, 13],
-  },
-  {
-    id: "r-105",
-    name: "Board Meeting",
-    identifier: "Orange holds",
-    grade: "V2",
-    wall: "Vertical Board",
-    wallKey: "vertical",
-    zone: "Training",
-    setter: "Alex Manager",
-    set: "Jul 10",
-    age: "8d",
-    style: "Fun",
-    rating: 4.7,
-    feedback: 27,
-    status: "Healthy",
-    color: "#f07a2a",
-    colorName: "Orange",
-    cells: [77, 69, 61, 52, 44, 36, 28, 20, 12],
-  },
-  {
-    id: "r-106",
-    name: "Purple Rain",
-    identifier: "Purple holds",
-    grade: "V4",
-    wall: "Vertical Board",
-    wallKey: "vertical",
-    zone: "Training",
-    setter: "Jordan Setter",
-    set: "Jun 3",
-    age: "45d",
-    style: "Compression",
-    rating: 3.9,
-    feedback: 32,
-    status: "Strip soon",
-    color: "#9b6bff",
-    colorName: "Purple",
-    cells: [74, 66, 58, 50, 43, 35, 27, 18],
-  },
-];
 
 const initials = (name) =>
   name
@@ -268,9 +159,9 @@ function RouteCard({ route, selected, onClick, insight }) {
   );
 }
 
-function GymHoldView({ routes, selected, selectRoute }) {
+function GymHoldView({ routes, walls, selected, selectRoute }) {
   const selectedRoute = routes.find((r) => r.id === selected);
-  const wallKey = selectedRoute?.wallKey ?? "slab";
+  const wallKey = selectedRoute?.wallKey ?? walls[0]?.key ?? "slab";
 
   return (
     <section className="gym-map gym-hold-view" aria-label="Lit hold boards">
@@ -280,12 +171,121 @@ function GymHoldView({ routes, selected, selectRoute }) {
       </div>
       <HoldGrid
         routes={routes}
+        walls={walls}
         selectedWallKey={wallKey}
         selectedRouteId={selected}
         onSelectWall={() => {}}
         onSelectRoute={selectRoute}
       />
     </section>
+  );
+}
+
+function AddRouteModal({ walls, onClose, onCreated }) {
+  const [wallId, setWallId] = useState(walls[0]?.id || "");
+  const [file, setFile] = useState(null);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("");
+  const [grade, setGrade] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!wallId && walls[0]?.id) setWallId(walls[0].id);
+  }, [walls, wallId]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      setError("Choose a photo of the route.");
+      return;
+    }
+    if (!wallId) {
+      setError("Select a wall.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const created = await createRouteFromImage({
+        wallId,
+        file,
+        name: name.trim() || undefined,
+        color: color.trim() || undefined,
+        grade: grade.trim() || undefined,
+      });
+      onCreated(created);
+    } catch (err) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="modal-panel"
+        role="dialog"
+        aria-labelledby="add-route-title"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">NEW ROUTE</p>
+            <h2 id="add-route-title">Add from photo</h2>
+            <p>AI maps holds onto the wall grid and saves the route.</p>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <form className="modal-form" onSubmit={submit}>
+          <label>
+            Wall
+            <select value={wallId} onChange={(e) => setWallId(e.target.value)} required>
+              {walls.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} ({w.zone})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Route photo
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              required
+            />
+          </label>
+          <div className="modal-row">
+            <label>
+              Name <span>(optional)</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Soft Landing" />
+            </label>
+            <label>
+              Color <span>(optional)</span>
+              <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Yellow" />
+            </label>
+            <label>
+              Grade <span>(optional)</span>
+              <input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="V3" />
+            </label>
+          </div>
+          {error && <p className="modal-error">{error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={busy || !walls.length}>
+              {busy ? "Extracting…" : "Upload & save"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -381,6 +381,22 @@ function RouteDetails({ route, insight }) {
         </div>
       )}
 
+      {route.holds?.length > 0 && (
+        <div className="signal-card" style={{ marginTop: 14 }}>
+          <div className="signal-label">
+            <span>Hold sequence ({route.holds.length})</span>
+          </div>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 16, fontSize: 10, color: "#63705f", lineHeight: 1.5 }}>
+            {route.holds.map((h) => (
+              <li key={`${h.sequence_index}-${h.cell_index}`}>
+                #{h.sequence_index + 1} · {h.hold_type} · row {h.row}, col {h.col}
+                {h.notes ? ` · ${h.notes}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="signal-card">
         <div className="signal-label">
           <span>Community signal</span>
@@ -413,7 +429,7 @@ export default function App() {
   const [view, setView] = useState("gym");
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState("r-102");
+  const [selectedId, setSelectedId] = useState(null);
   const [notice, setNotice] = useState("");
   const [feedbackText, setFeedbackText] = useState(SAMPLE_FEEDBACK);
   const [analyzing, setAnalyzing] = useState(false);
@@ -421,9 +437,56 @@ export default function App() {
   const [gymSummary, setGymSummary] = useState("");
   const [insightsById, setInsightsById] = useState({});
   const [provider, setProvider] = useState("");
+  const [routeData, setRouteData] = useState([]);
+  const [walls, setWalls] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
-  const selectedRoute = routeData.find((route) => route.id === selectedId) ?? routeData[0];
-  const selectedInsight = insightsById[selectedRoute.id];
+  const loadInventory = async () => {
+    const [apiWalls, apiRoutes] = await Promise.all([fetchWalls(), fetchRoutes()]);
+    setWalls(
+      apiWalls.map((w) => ({
+        key: w.wall_key || w.angle_type || w.id,
+        name: w.name,
+        zone: w.zone,
+        cols: w.grid_cols || 8,
+        rows: w.grid_rows || 10,
+        id: w.id,
+      })),
+    );
+    setRouteData(apiRoutes);
+    return apiRoutes;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const apiRoutes = await loadInventory();
+        if (cancelled) return;
+        if (apiRoutes.length) {
+          setSelectedId((prev) => prev || apiRoutes[0].id);
+        } else {
+          setSelectedId(null);
+        }
+      } catch (err) {
+        if (!cancelled) setLoadError(err.message || "Failed to load routes");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedRoute = selectedId
+    ? routeData.find((route) => route.id === selectedId)
+    : null;
+  const selectedInsight = selectedRoute ? insightsById[selectedRoute.id] : null;
   const visibleRoutes = useMemo(
     () =>
       routeData.filter((route) =>
@@ -431,7 +494,7 @@ export default function App() {
           .toLowerCase()
           .includes(query.toLowerCase()),
       ),
-    [query],
+    [query, routeData],
   );
 
   const selectRoute = (id) => {
@@ -440,7 +503,20 @@ export default function App() {
     setView("gym");
   };
 
-  const addRoute = () => setNotice("Demo uses static prepopulated routes.");
+  const handleRouteCreated = async (created) => {
+    const mapped = mapApiRoute(created);
+    setRouteData((prev) => [mapped, ...prev.filter((r) => r.id !== mapped.id)]);
+    setSelectedId(mapped.id);
+    setAddOpen(false);
+    setNotice(`Saved “${mapped.name}” with ${mapped.cells?.length || 0} holds on the grid.`);
+    setView("gym");
+    try {
+      await loadInventory();
+      setSelectedId(mapped.id);
+    } catch {
+      /* keep optimistic row */
+    }
+  };
 
   const runAnalyze = async () => {
     setAnalyzing(true);
@@ -467,72 +543,33 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <nav className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">C</span>
-          <span>crux</span>
-        </div>
-        <div className="gym-switch">
-          <span className="gym-icon">⌂</span>
-          <span>
-            <strong>Summit Lab</strong>
-            <small>Demo gym</small>
-          </span>
-          <Icon name="chevron" size={16} />
-        </div>
-        <div className="nav-section">
-          <small>WORKSPACE</small>
-          <button className="nav-item active">
-            <Icon name="grid" />
-            Overview
-          </button>
-          <button className="nav-item">
-            <Icon name="routes" />
-            Routes <span className="count">{routeData.length}</span>
-          </button>
-          <button className="nav-item">
-            <Icon name="map" />
-            Plan
-          </button>
-          <button className="nav-item">
-            <Icon name="chart" />
-            Insights
-          </button>
-        </div>
-        <div className="sidebar-bottom">
-          <button className="nav-item">
-            <Icon name="settings" />
-            Settings
-          </button>
-          <div className="user">
-            <span className="avatar">MC</span>
-            <span>
-              <strong>Maya Chen</strong>
-              <small>Setting manager</small>
-            </span>
-            <Icon name="dots" size={17} />
-          </div>
-        </div>
-      </nav>
-
       <section className="workspace">
         <header className="topbar">
-          <div className="crumb">
-            <span>Overview</span>
-            <Icon name="chevron" size={14} />
-            <strong>Active routes</strong>
+          <div className="brand-inline">
+            <span className="brand-mark">C</span>
+            <div>
+              <strong className="brand-name">crux</strong>
+              <span className="brand-gym">Summit Lab · route inventory</span>
+            </div>
           </div>
           <div className="top-actions">
-            <button className="icon-button notification">
-              <Icon name="bell" />
-              <b />
-            </button>
-            <button className="add-route" onClick={addRoute}>
+            <button className="add-route" onClick={() => setAddOpen(true)}>
               <Icon name="plus" size={17} />
               Add route
             </button>
           </div>
         </header>
+        {loading && (
+          <div className="notice" role="status">
+            Loading routes from API…
+          </div>
+        )}
+        {loadError && (
+          <div className="notice" role="alert">
+            {loadError}
+            <button onClick={() => setLoadError("")}>×</button>
+          </div>
+        )}
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -545,13 +582,13 @@ export default function App() {
             <p className="eyebrow">ROUTE INVENTORY</p>
             <h1>What’s on the wall</h1>
             <p className="subtitle">
-              Static demo routes — paste climber feedback, run AI, then click a route for keep /
-              change-out guidance.
+              Upload a route photo to generate a normalized hold grid. Nothing shows here until you
+              add a route.
             </p>
           </div>
           <div className="as-of">
             <span className="live-dot" />
-            Updated just now
+            Live from API
           </div>
         </div>
 
@@ -560,14 +597,14 @@ export default function App() {
             <span>Active routes</span>
             <strong>{routeData.length}</strong>
             <small>
-              <em>static demo</em>
+              <em>{routeData.length ? "from API" : "none yet"}</em>
             </small>
           </div>
           <div className="metric">
             <span>Change out</span>
-            <strong>{changeCount || routeData.filter((r) => r.status === "Review").length}</strong>
+            <strong>{changeCount || routeData.filter((r) => r.status === "Review").length || "—"}</strong>
             <small>
-              <em className="warn">{changeCount ? "from AI" : "pre-AI flags"}</em>
+              <em className="warn">{changeCount ? "from AI" : "run analyze"}</em>
             </small>
           </div>
           <div className="metric">
@@ -593,7 +630,7 @@ export default function App() {
             <div>
               <h2>Climber feedback → AI insights</h2>
               <p>
-                Paste survey comments or floor notes. The model maps them onto the static routes and
+                Paste survey comments or floor notes. The model maps them onto your saved routes and
                 recommends what to keep, what to strip, and what to set next.
               </p>
             </div>
@@ -605,14 +642,24 @@ export default function App() {
             aria-label="Climber feedback"
           />
           <div className="feedback-lab-actions">
-            <button className="primary" type="button" disabled={analyzing} onClick={runAnalyze}>
+            <button
+              className="primary"
+              type="button"
+              disabled={analyzing || !routeData.length}
+              onClick={runAnalyze}
+            >
               {analyzing ? "Analyzing…" : "Analyze with AI"}
             </button>
             <button className="ghost" type="button" onClick={() => setFeedbackText(SAMPLE_FEEDBACK)}>
               Load sample feedback
             </button>
             <span className={`feedback-lab-meta ${analyzeError ? "error" : ""}`}>
-              {analyzeError || (Object.keys(insightsById).length ? `${Object.keys(insightsById).length} routes scored` : "Waiting for analysis")}
+              {analyzeError ||
+                (!routeData.length
+                  ? "Add a route first"
+                  : Object.keys(insightsById).length
+                    ? `${Object.keys(insightsById).length} routes scored`
+                    : "Waiting for analysis")}
             </span>
           </div>
           {gymSummary && (
@@ -661,40 +708,66 @@ export default function App() {
               <button onClick={() => setQuery("")}>Clear filters</button>
             </div>
           )}
-          <div className={`view-stage ${view}`}>
-            <div className="route-list-panel">
-              <div className="list-summary">
-                <strong>{visibleRoutes.length} active routes</strong>
-                <span>
-                  Sorted by set date <Icon name="chevron" size={14} />
-                </span>
-              </div>
-              <div className="route-list">
-                {visibleRoutes.length ? (
-                  visibleRoutes.map((route) => (
-                    <RouteCard
-                      key={route.id}
-                      route={route}
-                      selected={selectedId === route.id}
-                      onClick={selectRoute}
-                      insight={insightsById[route.id]}
-                    />
-                  ))
-                ) : (
-                  <div className="empty-state">No routes match that search.</div>
-                )}
-              </div>
+          {!loading && !routeData.length ? (
+            <div className="inventory-empty">
+              <h3>No routes yet</h3>
+              <p>Upload a photo of a set climb. Vision AI builds a grid hold sequence and saves it.</p>
+              <button type="button" className="add-route" onClick={() => setAddOpen(true)}>
+                <Icon name="plus" size={17} />
+                Add your first route
+              </button>
             </div>
-            <GymHoldView
-              routes={visibleRoutes.length ? visibleRoutes : routeData}
-              selected={selectedId}
-              selectRoute={selectRoute}
-            />
-            <RouteDetails route={selectedRoute} insight={selectedInsight} />
-          </div>
+          ) : (
+            <div className={`view-stage ${view}`}>
+              <div className="route-list-panel">
+                <div className="list-summary">
+                  <strong>{visibleRoutes.length} active routes</strong>
+                  <span>
+                    Sorted by set date <Icon name="chevron" size={14} />
+                  </span>
+                </div>
+                <div className="route-list">
+                  {visibleRoutes.length ? (
+                    visibleRoutes.map((route) => (
+                      <RouteCard
+                        key={route.id}
+                        route={route}
+                        selected={selectedId === route.id}
+                        onClick={selectRoute}
+                        insight={insightsById[route.id]}
+                      />
+                    ))
+                  ) : (
+                    <div className="empty-state">No routes match that search.</div>
+                  )}
+                </div>
+              </div>
+              <GymHoldView
+                routes={visibleRoutes.length ? visibleRoutes : routeData}
+                walls={walls}
+                selected={selectedId}
+                selectRoute={selectRoute}
+              />
+              {selectedRoute ? (
+                <RouteDetails route={selectedRoute} insight={selectedInsight} />
+              ) : (
+                <aside className="route-details">
+                  <div className="ai-empty">Select a route to inspect holds and AI insights.</div>
+                </aside>
+              )}
+            </div>
+          )}
         </div>
-        <footer>Summit Lab · Staff workspace · Hold boards wired to route inventory</footer>
+        <footer>Summit Lab · Add route from photo · {API_BASE}</footer>
       </section>
+
+      {addOpen && (
+        <AddRouteModal
+          walls={walls}
+          onClose={() => setAddOpen(false)}
+          onCreated={handleRouteCreated}
+        />
+      )}
     </main>
   );
 }

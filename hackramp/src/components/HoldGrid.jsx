@@ -1,15 +1,17 @@
-import { WALLS, isLitStatus } from "../data/wallsConfig";
+import { WALLS as DEFAULT_WALLS, isLitStatus } from "../data/wallsConfig";
 
 export function HoldGrid({
   routes,
+  walls = DEFAULT_WALLS,
   selectedWallKey,
   selectedRouteId,
   onSelectWall,
   onSelectRoute,
 }) {
+  const boards = walls?.length ? walls : DEFAULT_WALLS;
   return (
     <div className="boards">
-      {WALLS.map((wall) => (
+      {boards.map((wall) => (
         <WallPanel
           key={wall.key}
           wall={wall}

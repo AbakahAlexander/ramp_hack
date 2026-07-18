@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -22,7 +22,7 @@ def _gym_walls(db: Session, gym_id: str) -> list[str]:
 def _get_route_for_gym(db: Session, route_id: str, gym_id: str) -> Route:
     route = (
         db.query(Route)
-        .options(joinedload(Route.wall), joinedload(Route.setters))
+        .options(joinedload(Route.wall), joinedload(Route.setters), joinedload(Route.holds))
         .filter(Route.id == route_id)
         .first()
     )
@@ -31,14 +31,88 @@ def _get_route_for_gym(db: Session, route_id: str, gym_id: str) -> Route:
     return route
 
 
+def _apply_holds(route: Route, wall: Wall, hold_inputs: list) -> None:
+    from app.services.seed import build_holds_for_wall
+
+    try:
+        route.holds = build_holds_for_wall(wall, hold_inputs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/from-image",
+    response_model=RouteDetailOut,
+    status_code=201,
+    summary="Add route from photo (AI → grid)",
+    response_description="Persisted route with normalized hold sequence",
+    description=(
+        "Upload a photo of a set route. Vision AI maps holds onto the wall's grid "
+        "(row/col + hold_type), then saves the route. No hardcoded routes — empty gym until you add."
+    ),
+)
+async def create_route_from_image(
+    gym: Annotated[Gym, Depends(get_demo_gym)],
+    db: Annotated[Session, Depends(get_db)],
+    wall_id: Annotated[str, Form()],
+    image: Annotated[UploadFile, File(description="Photo of the route")],
+    name: Annotated[str | None, Form()] = None,
+    color_identifier: Annotated[str | None, Form()] = None,
+    assigned_grade: Annotated[str | None, Form()] = None,
+):
+    from datetime import date
+
+    from app.services.vision_route import extract_route_from_image
+
+    wall = db.query(Wall).filter(Wall.id == wall_id, Wall.gym_id == gym.id).first()
+    if not wall:
+        raise HTTPException(status_code=400, detail="Invalid wall_id")
+
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty image upload")
+    if len(raw) > 12_000_000:
+        raise HTTPException(status_code=400, detail="Image too large (max ~12MB)")
+
+    try:
+        extracted = extract_route_from_image(
+            raw,
+            image.content_type or "image/jpeg",
+            wall.grid_cols or 8,
+            wall.grid_rows or 10,
+            color_hint=color_identifier,
+            wall_name=wall.name,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
+
+    route = Route(
+        wall_id=wall.id,
+        name=name or extracted.get("name") or "New route",
+        color_identifier=color_identifier or extracted.get("color_identifier") or "Mixed",
+        display_color=extracted.get("display_color") or "#888888",
+        assigned_grade=assigned_grade or extracted.get("assigned_grade") or "V?",
+        styles=",".join(extracted.get("styles") or ["technical"]),
+        status="active",
+        set_date=date.today(),
+        notes=extracted.get("notes"),
+        photo_url=None,
+    )
+    _apply_holds(route, wall, extracted.get("holds") or [])
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return route_to_detail(_get_route_for_gym(db, route.id, gym.id), db)
+
+
 @router.get(
     "",
     response_model=RouteListOut,
     summary="List / filter routes",
     response_description="Routes with computed health metrics",
     description=(
-        "Staff route inventory. Each item includes `health` (sends, perceived grade, tags, review_score). "
-        "Filter by status, wall, zone, grade, style, setter, or free-text search on color/notes."
+        "Staff route inventory. Each item includes `health`, `holds` (sequence/type/location), "
+        "and `cells` for lighting the board."
     ),
 )
 def list_routes(
@@ -60,7 +134,7 @@ def list_routes(
     wall_ids = _gym_walls(db, gym.id)
     query = (
         db.query(Route)
-        .options(joinedload(Route.wall), joinedload(Route.setters))
+        .options(joinedload(Route.wall), joinedload(Route.setters), joinedload(Route.holds))
         .filter(Route.wall_id.in_(wall_ids))
     )
     if status:
@@ -77,7 +151,11 @@ def list_routes(
         query = query.filter(Route.styles.contains(style))
     if q:
         like = f"%{q}%"
-        query = query.filter((Route.color_identifier.ilike(like)) | (Route.notes.ilike(like)))
+        query = query.filter(
+            (Route.color_identifier.ilike(like))
+            | (Route.notes.ilike(like))
+            | (Route.name.ilike(like))
+        )
 
     routes = query.order_by(Route.set_date.desc()).all()
     if setter_id:
@@ -91,11 +169,12 @@ def list_routes(
     "",
     response_model=RouteDetailOut,
     status_code=201,
-    summary="Create a route",
-    response_description="Created route with health (usually empty until feedback arrives)",
+    summary="Create a route with hold sequence",
+    response_description="Created route including holds",
     description=(
-        "Create a new route on a wall. First GET `/walls` and `/staff?setters_only=true` for IDs. "
-        "`photo_url` is an optional image link (no file upload)."
+        "Gym owner / setter creates a route: metadata + ordered `holds` on the wall grid.\n\n"
+        "Each hold needs `sequence_index`, `row`, `col`, and `hold_type` "
+        "(jug | crimp | pinch | sloper | foothold | volume | pocket | other)."
     ),
 )
 def create_route(
@@ -119,8 +198,10 @@ def create_route(
 
     route = Route(
         wall_id=payload.wall_id,
+        name=payload.name or payload.color_identifier,
         photo_url=payload.photo_url,
         color_identifier=payload.color_identifier,
+        display_color=payload.display_color,
         assigned_grade=payload.assigned_grade,
         grade_system=payload.grade_system,
         styles=",".join(payload.styles),
@@ -130,6 +211,8 @@ def create_route(
         notes=payload.notes,
     )
     route.setters = setters
+    if payload.holds:
+        _apply_holds(route, wall, payload.holds)
     db.add(route)
     db.commit()
     db.refresh(route)
@@ -171,6 +254,7 @@ def update_route(
     if "styles" in data and data["styles"] is not None:
         data["styles"] = ",".join(data["styles"])
     setter_ids = data.pop("setter_ids", None)
+    holds_in = data.pop("holds", None)
     if "wall_id" in data:
         wall = db.query(Wall).filter(Wall.id == data["wall_id"], Wall.gym_id == gym.id).first()
         if not wall:
@@ -184,6 +268,8 @@ def update_route(
             .all()
         )
         route.setters = setters
+    if holds_in is not None:
+        _apply_holds(route, route.wall, holds_in)
     route.updated_at = datetime.utcnow()
     db.commit()
     route = _get_route_for_gym(db, route_id, gym.id)

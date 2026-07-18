@@ -147,13 +147,29 @@ def compute_route_health(route: Route, db: Session) -> RouteHealth:
 
 
 def route_to_detail(route: Route, db: Session) -> RouteDetailOut:
+    from app.schemas import RouteHoldOut
+
     health = compute_route_health(route, db)
     wall = route.wall
+    holds = [
+        RouteHoldOut(
+            id=h.id,
+            sequence_index=h.sequence_index,
+            cell_index=h.cell_index,
+            row=h.row,
+            col=h.col,
+            hold_type=h.hold_type,
+            notes=h.notes,
+        )
+        for h in sorted(route.holds, key=lambda x: x.sequence_index)
+    ]
     return RouteDetailOut(
         id=route.id,
         wall_id=route.wall_id,
+        name=route.name or route.color_identifier,
         photo_url=route.photo_url,
         color_identifier=route.color_identifier,
+        display_color=route.display_color or "#888888",
         assigned_grade=route.assigned_grade,
         grade_system=route.grade_system,
         styles=route.style_list,
@@ -162,11 +178,16 @@ def route_to_detail(route: Route, db: Session) -> RouteDetailOut:
         reset_date=route.reset_date,
         notes=route.notes,
         setters=[SetterBrief(id=s.id, full_name=s.full_name) for s in route.setters],
+        holds=holds,
+        cells=[h.cell_index for h in holds],
         created_at=route.created_at,
         updated_at=route.updated_at,
         health=health,
         wall_name=wall.name if wall else None,
+        wall_key=wall.wall_key if wall else None,
         zone=wall.zone if wall else None,
+        grid_cols=wall.grid_cols if wall else None,
+        grid_rows=wall.grid_rows if wall else None,
     )
 
 

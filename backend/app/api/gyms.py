@@ -85,7 +85,7 @@ def seed_status(db: Annotated[Session, Depends(get_db)]):
     staff = db.query(StaffUser).count()
     feedback = db.query(Feedback).count()
     issues = db.query(IssueReport).count()
-    seeded = gyms > 0 and routes > 0
+    seeded = gyms > 0 and walls > 0
     return SeedStatusOut(
         gym_name=gym.name if gym else None,
         gyms=gyms,
@@ -96,8 +96,8 @@ def seed_status(db: Annotated[Session, Depends(get_db)]):
         issues=issues,
         seeded=seeded,
         hint=(
-            "GET /api/v1/dashboard/overview"
-            if seeded
-            else "Restart with SEED_ON_STARTUP=true or redeploy the service"
+            "POST /api/v1/routes/from-image to add your first route"
+            if routes == 0
+            else "GET /api/v1/dashboard/overview"
         ),
     )

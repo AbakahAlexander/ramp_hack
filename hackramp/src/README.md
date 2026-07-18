@@ -8,19 +8,29 @@ npm install
 npm run dev
 ```
 
-Optional: create `.env` in this folder:
+Optional `.env`:
 
 ```
 VITE_API_URL=https://holy-merrill-tormame-aafedec0.koyeb.app
 ```
 
-For local API: `VITE_API_URL=http://localhost:8000`
+## Data source
 
-## Demo flow
+Routes and hold sequences load from the API (`GET /api/v1/routes`, `GET /api/v1/walls`).  
+No hardcoded route inventory — the list is empty until you add one.
 
-1. Dashboard shows **static** prepopulated routes (not loaded from API inventory).
-2. Paste climber feedback in the feedback box (sample text is preloaded).
-3. Click **Analyze with AI** → `POST /api/v1/insights/analyze`.
-4. Click a route — the detail panel shows **keep / monitor / change out** plus what to change it to.
+## Add route from photo
 
-Backend needs `OPENAI_API_KEY` on Koyeb (or local `.env`). Without a key, the API uses a deterministic fallback so the UI still works.
+Use **Add route** in the dashboard (or `POST /api/v1/routes/from-image`):
+
+1. Pick a wall
+2. Upload a photo of the climb
+3. Vision AI returns a normalized hold grid (`row` / `col` / `hold_type`) and persists the route
+
+Optional overrides: name, color, grade.
+
+Manual create still works via `POST /api/v1/routes` with an explicit `holds` list.
+
+## AI insights
+
+Paste feedback → Analyze → click a route for keep / change-out guidance.
