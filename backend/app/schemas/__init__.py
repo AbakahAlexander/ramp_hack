@@ -325,6 +325,10 @@ class RouteOut(ORMModel):
     set_date: date
     reset_date: date | None
     notes: str | None
+    scene_xml: str | None = Field(
+        default=None,
+        description="Editable <route> XML fragment for cartoon board / optimization",
+    )
     setters: list[SetterBrief]
     holds: list[RouteHoldOut] = Field(description="Ordered holds: sequence, type, row/col/cell")
     cells: list[int] = Field(description="Convenience: cell indices for lighting the board")
@@ -339,6 +343,15 @@ class RouteDetailOut(RouteOut):
     zone: str | None = Field(default=None, description="Denormalized wall zone")
     grid_cols: int | None = Field(default=None)
     grid_rows: int | None = Field(default=None)
+
+
+class FromImageBatchOut(BaseModel):
+    """Multi-route extract from one wall photo."""
+
+    routes: list[RouteDetailOut] = Field(description="All detected routes, persisted")
+    xml: str = Field(description="Full <wall> scene XML — edit this to optimize holds later")
+    provider: str = Field(description="opencv | openai | fallback")
+    total: int = Field(description="Number of routes created")
 
 
 class RouteListOut(BaseModel):

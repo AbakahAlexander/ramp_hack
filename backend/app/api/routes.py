@@ -12,7 +12,14 @@ from app.deps import get_demo_gym
 from app.models.gym import Gym, Wall
 from app.models.route import Route
 from app.models.user import StaffUser
-from app.schemas import RouteCreate, RouteDetailOut, RouteListOut, RouteStatusUpdate, RouteUpdate
+from app.schemas import (
+    FromImageBatchOut,
+    RouteCreate,
+    RouteDetailOut,
+    RouteListOut,
+    RouteStatusUpdate,
+    RouteUpdate,
+)
 from app.services.metrics import route_to_detail
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
@@ -60,28 +67,26 @@ def _save_upload(raw: bytes, content_type: str | None) -> str:
 
 @router.post(
     "/from-image",
-    response_model=RouteDetailOut,
+    response_model=FromImageBatchOut,
     status_code=201,
-    summary="Add route from photo (AI / CV → spatial holds)",
-    response_description="Persisted route with continuous hold positions for heatmap display",
+    summary="Extract all routes from one wall photo → XML + DB",
+    response_description="Every detected route persisted, plus editable wall scene XML",
     description=(
-        "Upload a photo of a set route. Color segmentation (OpenCV) maps holds to normalized "
-        "x/y + size blobs (not a coarse grid). Optional color_identifier focuses one route on a "
-        "multi-route wall. Photo is stored for heatmap overlay."
+        "Upload one wall photo. Auto-detects every colored route (no color picker). "
+        "Returns cartoon-ready <wall> XML with holds at positions/shapes/colors, "
+        "and creates one DB route per color line."
     ),
 )
-async def create_route_from_image(
+async def create_routes_from_image(
     gym: Annotated[Gym, Depends(get_demo_gym)],
     db: Annotated[Session, Depends(get_db)],
     wall_id: Annotated[str, Form()],
-    image: Annotated[UploadFile, File(description="Photo of the route")],
-    name: Annotated[str | None, Form()] = None,
-    color_identifier: Annotated[str | None, Form()] = None,
-    assigned_grade: Annotated[str | None, Form()] = None,
+    image: Annotated[UploadFile, File(description="Photo of the wall / routes")],
 ):
     from datetime import date
 
-    from app.services.vision_route import extract_route_from_image
+    from app.services.route_xml import build_wall_xml, route_fragment_xml
+    from app.services.vision_route import extract_all_routes_from_image
 
     wall = db.query(Wall).filter(Wall.id == wall_id, Wall.gym_id == gym.id).first()
     if not wall:
@@ -94,37 +99,70 @@ async def create_route_from_image(
         raise HTTPException(status_code=400, detail="Image too large (max ~12MB)")
 
     try:
-        extracted = extract_route_from_image(
+        batch = extract_all_routes_from_image(
             raw,
             image.content_type or "image/jpeg",
             wall.grid_cols or 8,
             wall.grid_rows or 10,
-            color_hint=color_identifier,
             wall_name=wall.name,
+            wall_id=wall.id,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
 
-    filename = _save_upload(raw, image.content_type)
-    photo_url = f"/api/v1/routes/photos/{filename}"
+    created_ids: list[str] = []
+    persisted: list[dict] = []
+    for extracted in batch.get("routes") or []:
+        route = Route(
+            wall_id=wall.id,
+            name=extracted.get("name") or "New route",
+            color_identifier=extracted.get("color_identifier") or "Mixed",
+            display_color=extracted.get("display_color") or "#888888",
+            assigned_grade=extracted.get("assigned_grade") or "V?",
+            styles=",".join(extracted.get("styles") or ["technical"]),
+            status="active",
+            set_date=date.today(),
+            notes=extracted.get("notes"),
+            photo_url=None,
+            scene_xml=None,
+        )
+        _apply_holds(route, wall, extracted.get("holds") or [])
+        db.add(route)
+        db.flush()
+        fragment = route_fragment_xml(
+            {
+                "id": route.id,
+                "name": route.name,
+                "color_identifier": route.color_identifier,
+                "display_color": route.display_color,
+                "assigned_grade": route.assigned_grade,
+                "holds": extracted.get("holds") or [],
+            }
+        )
+        route.scene_xml = fragment
+        created_ids.append(route.id)
+        persisted.append(
+            {
+                "id": route.id,
+                "name": route.name,
+                "color_identifier": route.color_identifier,
+                "display_color": route.display_color,
+                "assigned_grade": route.assigned_grade,
+                "holds": extracted.get("holds") or [],
+            }
+        )
 
-    route = Route(
-        wall_id=wall.id,
-        name=name or extracted.get("name") or "New route",
-        color_identifier=color_identifier or extracted.get("color_identifier") or "Mixed",
-        display_color=extracted.get("display_color") or "#888888",
-        assigned_grade=assigned_grade or extracted.get("assigned_grade") or "V?",
-        styles=",".join(extracted.get("styles") or ["technical"]),
-        status="active",
-        set_date=date.today(),
-        notes=extracted.get("notes"),
-        photo_url=photo_url,
-    )
-    _apply_holds(route, wall, extracted.get("holds") or [])
-    db.add(route)
     db.commit()
-    db.refresh(route)
-    return route_to_detail(_get_route_for_gym(db, route.id, gym.id), db)
+
+    # Rebuild wall XML with real route UUIDs
+    wall_xml = build_wall_xml(wall_name=wall.name, wall_id=wall.id, routes=persisted)
+    details = [route_to_detail(_get_route_for_gym(db, rid, gym.id), db) for rid in created_ids]
+    return FromImageBatchOut(
+        routes=details,
+        xml=wall_xml,
+        provider=batch.get("provider") or "opencv",
+        total=len(details),
+    )
 
 
 @router.get(

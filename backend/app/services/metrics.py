@@ -180,6 +180,7 @@ def route_to_detail(route: Route, db: Session) -> RouteDetailOut:
         set_date=route.set_date,
         reset_date=route.reset_date,
         notes=route.notes,
+        scene_xml=getattr(route, "scene_xml", None),
         setters=[SetterBrief(id=s.id, full_name=s.full_name) for s in route.setters],
         holds=holds,
         cells=[h.cell_index for h in holds],

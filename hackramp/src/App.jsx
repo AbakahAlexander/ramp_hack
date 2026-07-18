@@ -4,10 +4,9 @@ import {
   API_BASE,
   SAMPLE_FEEDBACK,
   analyzeFeedback,
-  createRouteFromImage,
+  createRoutesFromImage,
   fetchRoutes,
   fetchWalls,
-  mapApiRoute,
 } from "./api";
 import "./styles.css";
 import "./hold-board.css";
@@ -159,15 +158,15 @@ function RouteCard({ route, selected, onClick, insight }) {
   );
 }
 
-function GymHoldView({ routes, walls, selected, selectRoute }) {
+function GymHoldView({ routes, walls, selected, selectRoute, sceneXml }) {
   const selectedRoute = routes.find((r) => r.id === selected);
   const wallKey = selectedRoute?.wallKey ?? walls[0]?.key ?? "slab";
 
   return (
-    <section className="gym-map gym-hold-view" aria-label="Lit hold boards">
+    <section className="gym-map gym-hold-view" aria-label="Cartoon route board">
       <div className="map-heading">
-        <span>Hold boards</span>
-        <small>Selected route as a heatmap on the wall photo — blob size matches hold size</small>
+        <span>Cartoon board</span>
+        <small>Independent SVG from scene XML — shapes, colors, positions (not a photo highlight)</small>
       </div>
       <HoldGrid
         routes={routes}
@@ -176,6 +175,7 @@ function GymHoldView({ routes, walls, selected, selectRoute }) {
         selectedRouteId={selected}
         onSelectWall={() => {}}
         onSelectRoute={selectRoute}
+        sceneXml={sceneXml}
       />
     </section>
   );
@@ -184,9 +184,6 @@ function GymHoldView({ routes, walls, selected, selectRoute }) {
 function AddRouteModal({ walls, onClose, onCreated }) {
   const [wallId, setWallId] = useState(walls[0]?.id || "");
   const [file, setFile] = useState(null);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState("");
-  const [grade, setGrade] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -197,28 +194,18 @@ function AddRouteModal({ walls, onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!file) {
-      setError("Choose a photo of the route.");
+      setError("Choose a wall photo.");
       return;
     }
     if (!wallId) {
       setError("Select a wall.");
       return;
     }
-    if (!color.trim()) {
-      setError("Enter the route color (e.g. Blue) so we isolate the right holds.");
-      return;
-    }
     setBusy(true);
     setError("");
     try {
-      const created = await createRouteFromImage({
-        wallId,
-        file,
-        name: name.trim() || undefined,
-        color: color.trim() || undefined,
-        grade: grade.trim() || undefined,
-      });
-      onCreated(created);
+      const batch = await createRoutesFromImage({ wallId, file });
+      onCreated(batch);
     } catch (err) {
       setError(err.message || "Upload failed");
     } finally {
@@ -236,9 +223,12 @@ function AddRouteModal({ walls, onClose, onCreated }) {
       >
         <div className="modal-head">
           <div>
-            <p className="eyebrow">NEW ROUTE</p>
-            <h2 id="add-route-title">Add from photo</h2>
-            <p>AI / CV maps holds as a spatial heatmap (position + size) on the wall photo.</p>
+            <p className="eyebrow">WALL PHOTO</p>
+            <h2 id="add-route-title">Extract all routes</h2>
+            <p>
+              One image → every colored route auto-detected into editable scene XML and the cartoon
+              board. No color picking.
+            </p>
           </div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}>
             ×
@@ -256,7 +246,7 @@ function AddRouteModal({ walls, onClose, onCreated }) {
             </select>
           </label>
           <label>
-            Route photo
+            Wall photo
             <input
               type="file"
               accept="image/*"
@@ -264,32 +254,13 @@ function AddRouteModal({ walls, onClose, onCreated }) {
               required
             />
           </label>
-          <div className="modal-row">
-            <label>
-              Color <span>(required for multi-route walls)</span>
-              <input
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                placeholder="Blue"
-                required
-              />
-            </label>
-            <label>
-              Name <span>(optional)</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Soft Landing" />
-            </label>
-            <label>
-              Grade <span>(optional)</span>
-              <input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="V3" />
-            </label>
-          </div>
           {error && <p className="modal-error">{error}</p>}
           <div className="modal-actions">
             <button type="button" className="ghost" onClick={onClose} disabled={busy}>
               Cancel
             </button>
             <button type="submit" className="primary" disabled={busy || !walls.length}>
-              {busy ? "Extracting…" : "Upload & save"}
+              {busy ? "Detecting routes…" : "Extract routes"}
             </button>
           </div>
         </form>
@@ -452,6 +423,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [sceneXml, setSceneXml] = useState("");
 
   const loadInventory = async () => {
     const [apiWalls, apiRoutes] = await Promise.all([fetchWalls(), fetchRoutes()]);
@@ -513,18 +485,24 @@ export default function App() {
     setView("gym");
   };
 
-  const handleRouteCreated = async (created) => {
-    const mapped = mapApiRoute(created);
-    setRouteData((prev) => [mapped, ...prev.filter((r) => r.id !== mapped.id)]);
-    setSelectedId(mapped.id);
+  const handleRouteCreated = async (batch) => {
+    const created = batch.routes || [];
+    setSceneXml(batch.xml || "");
+    setRouteData((prev) => {
+      const ids = new Set(created.map((r) => r.id));
+      return [...created, ...prev.filter((r) => !ids.has(r.id))];
+    });
+    if (created[0]) setSelectedId(created[0].id);
     setAddOpen(false);
-    setNotice(`Saved “${mapped.name}” with ${mapped.cells?.length || 0} holds on the grid.`);
+    setNotice(
+      `Extracted ${batch.total || created.length} routes into scene XML (${batch.provider || "cv"}).`,
+    );
     setView("gym");
     try {
       await loadInventory();
-      setSelectedId(mapped.id);
+      if (created[0]) setSelectedId(created[0].id);
     } catch {
-      /* keep optimistic row */
+      /* keep optimistic rows */
     }
   };
 
@@ -592,8 +570,8 @@ export default function App() {
             <p className="eyebrow">ROUTE INVENTORY</p>
             <h1>What’s on the wall</h1>
             <p className="subtitle">
-              Upload a route photo to generate a normalized hold grid. Nothing shows here until you
-              add a route.
+              Upload one wall photo to extract every route into editable scene XML and a cartoon
+              board (shapes, colors, positions).
             </p>
           </div>
           <div className="as-of">
@@ -721,10 +699,10 @@ export default function App() {
           {!loading && !routeData.length ? (
             <div className="inventory-empty">
               <h3>No routes yet</h3>
-              <p>Upload a photo of a set climb. Vision AI builds a grid hold sequence and saves it.</p>
+              <p>Upload a wall photo — all colored routes are detected into scene XML automatically.</p>
               <button type="button" className="add-route" onClick={() => setAddOpen(true)}>
                 <Icon name="plus" size={17} />
-                Add your first route
+                Extract from photo
               </button>
             </div>
           ) : (
@@ -757,6 +735,7 @@ export default function App() {
                 walls={walls}
                 selected={selectedId}
                 selectRoute={selectRoute}
+                sceneXml={sceneXml}
               />
               {selectedRoute ? (
                 <RouteDetails route={selectedRoute} insight={selectedInsight} />

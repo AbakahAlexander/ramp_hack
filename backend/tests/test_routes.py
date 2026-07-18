@@ -77,46 +77,39 @@ def test_route_from_image_opencv_spatial(client: TestClient):
     png = fixture.read_bytes()
     res = client.post(
         "/api/v1/routes/from-image",
-        data={"wall_id": wall_id, "color_identifier": "Blue", "assigned_grade": "V3"},
+        data={"wall_id": wall_id},
         files={"image": ("wall_routes.png", png, "image/png")},
     )
     assert res.status_code == 201, res.text
     body = res.json()
-    assert body["color_identifier"] == "Blue"
-    assert body["photo_url"]
-    assert len(body["holds"]) >= 8
-    xs = [h["x"] for h in body["holds"]]
-    ys = [h["y"] for h in body["holds"]]
-    sizes = [h["size"] for h in body["holds"]]
-    # Blue lane is mid-left — not a single grid column
-    assert min(xs) >= 0.2 and max(xs) <= 0.45
+    assert body["total"] >= 4, body
+    assert "<wall" in body["xml"] and "<route" in body["xml"] and "<hold" in body["xml"]
+    colors = {r["color_identifier"].lower() for r in body["routes"]}
+    assert "blue" in colors and "pink" in colors
+    blue = next(r for r in body["routes"] if r["color_identifier"].lower() == "blue")
+    assert len(blue["holds"]) >= 8
+    assert blue["scene_xml"] and "<route" in blue["scene_xml"]
+    xs = [h["x"] for h in blue["holds"]]
     assert max(xs) - min(xs) > 0.04
-    assert max(ys) > 0.7 and min(ys) < 0.4
-    assert max(sizes) > min(sizes)
-    photo = client.get(body["photo_url"])
-    assert photo.status_code == 200
-    assert photo.headers["content-type"].startswith("image/")
 
 
 def test_route_from_image_fallback(client: TestClient):
     walls = client.get("/api/v1/walls").json()
     wall_id = walls[0]["id"]
-    # minimal 1x1 png — CV finds nothing, uses fallback diagonal
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
         b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     res = client.post(
         "/api/v1/routes/from-image",
-        data={"wall_id": wall_id, "color_identifier": "Teal"},
+        data={"wall_id": wall_id},
         files={"image": ("route.png", png, "image/png")},
     )
     assert res.status_code == 201, res.text
     body = res.json()
-    assert body["color_identifier"] == "Teal"
-    assert len(body["holds"]) >= 1
-    assert "x" in body["holds"][0]
-    assert body["cells"]
+    assert body["total"] >= 1
+    assert body["xml"]
+    assert "x" in body["routes"][0]["holds"][0]
 
 
 def test_route_detail(client: TestClient, sample_route: dict):

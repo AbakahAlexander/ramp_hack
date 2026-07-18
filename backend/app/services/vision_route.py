@@ -275,6 +275,76 @@ Rules:
     return data
 
 
+def extract_all_routes_from_image(
+    image_bytes: bytes,
+    content_type: str,
+    grid_cols: int,
+    grid_rows: int,
+    *,
+    wall_name: str | None = None,
+    wall_id: str | None = None,
+    min_holds: int = 5,
+) -> dict[str, Any]:
+    """Detect every colored route on the wall → routes list + scene XML."""
+    from app.services.route_xml import build_wall_xml, hold_shape
+
+    try:
+        img = _decode_image(image_bytes)
+    except ValueError:
+        single = extract_route_from_image(
+            image_bytes, content_type, grid_cols, grid_rows, wall_name=wall_name
+        )
+        routes = [single]
+        xml = build_wall_xml(wall_name=wall_name or "Wall", wall_id=wall_id, routes=routes)
+        return {"routes": routes, "xml": xml, "provider": "fallback"}
+
+    # Skip magenta duplicate of pink
+    color_keys = ("pink", "blue", "green", "yellow", "orange", "red", "purple", "teal")
+    routes: list[dict[str, Any]] = []
+    for key in color_keys:
+        holds = _detect_holds_cv(img, key)
+        if len(holds) < min_holds:
+            continue
+        # Attach cartoon shape
+        for h in holds:
+            h["shape"] = hold_shape(h.get("hold_type"))
+        holds = _legacy_grid_from_spatial(holds, grid_cols, grid_rows)
+        label = key.title()
+        routes.append(
+            {
+                "temp_id": f"route-{key}",
+                "name": f"{label} Route",
+                "color_identifier": label,
+                "display_color": DISPLAY_HEX.get(key, "#888888"),
+                "assigned_grade": "V?",
+                "styles": ["technical"],
+                "holds": holds,
+                "notes": f"Auto-detected {label} ({len(holds)} holds)",
+                "provider": "opencv",
+            }
+        )
+
+    # Sort left→right by mean hold x
+    routes.sort(
+        key=lambda r: sum(h["x"] for h in r["holds"]) / max(len(r["holds"]), 1),
+    )
+
+    if not routes:
+        single = extract_route_from_image(
+            image_bytes, content_type, grid_cols, grid_rows, wall_name=wall_name
+        )
+        for h in single.get("holds") or []:
+            h["shape"] = hold_shape(h.get("hold_type"))
+        routes = [single]
+
+    xml = build_wall_xml(wall_name=wall_name or "Wall", wall_id=wall_id, routes=routes)
+    return {
+        "routes": routes,
+        "xml": xml,
+        "provider": routes[0].get("provider", "opencv") if routes else "opencv",
+    }
+
+
 def extract_route_from_image(
     image_bytes: bytes,
     content_type: str,

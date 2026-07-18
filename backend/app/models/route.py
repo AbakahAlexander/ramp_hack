@@ -54,6 +54,8 @@ class Route(Base):
     set_date: Mapped[date] = mapped_column(Date, nullable=False)
     reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Editable cartoon scene fragment (<route>...</route>) for optimization / re-import
+    scene_xml: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

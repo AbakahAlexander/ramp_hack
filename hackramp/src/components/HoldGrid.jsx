@@ -1,168 +1,167 @@
-import { WALLS as DEFAULT_WALLS, isLitStatus } from "../data/wallsConfig";
-import { API_BASE } from "../api";
+import { buildWallXml, holdShape, parseWallXml } from "../wallXml";
 
-function photoSrc(url) {
-  if (!url) return null;
-  if (url.startsWith("http")) return url;
-  return `${API_BASE}${url}`;
-}
-
-/** Spatial heatmap board — soft blobs at continuous x/y with size, optionally on wall photo. */
+/**
+ * Independent cartoon wall — SVG holds from scene XML (not a photo overlay).
+ * Focus one route or show all; optimize later by editing XML.
+ */
 export function HoldGrid({
   routes,
-  walls = DEFAULT_WALLS,
+  walls,
   selectedWallKey,
   selectedRouteId,
   onSelectWall,
   onSelectRoute,
+  sceneXml,
 }) {
-  const boards = walls?.length ? walls : DEFAULT_WALLS;
-  const focus = selectedRouteId ? routes.find((r) => r.id === selectedRouteId) : null;
+  const wallMeta = (walls || []).find((w) => w.key === selectedWallKey) || walls?.[0];
+  const focusRoutes = selectedRouteId
+    ? routes.filter((r) => r.id === selectedRouteId)
+    : routes;
 
-  // When a route with a photo is selected, show one large heatmap panel
-  if (focus?.photoUrl) {
-    return (
-      <div className="boards boards-heatmap">
-        <HeatmapPanel
-          route={focus}
-          wall={boards.find((w) => w.key === focus.wallKey) || boards[0]}
-          selected
-          onSelectWall={() => onSelectWall(focus.wallKey)}
-          onSelectRoute={onSelectRoute}
-          routes={routes.filter((r) => r.wallKey === focus.wallKey)}
-          selectedRouteId={selectedRouteId}
-        />
-      </div>
-    );
+  let parsed = null;
+  if (sceneXml) {
+    try {
+      parsed = parseWallXml(sceneXml);
+    } catch {
+      parsed = null;
+    }
   }
 
+  const xmlRoutes =
+    parsed?.routes?.length > 0
+      ? parsed.routes
+          .map((pr) => {
+            const match = routes.find((r) => r.id === pr.id) || routes.find((r) => r.colorName === pr.colorName);
+            return {
+              ...pr,
+              id: match?.id || pr.id,
+              status: match?.status || "Healthy",
+            };
+          })
+          .filter((r) => !selectedRouteId || r.id === selectedRouteId)
+      : null;
+
+  const drawRoutes =
+    xmlRoutes && xmlRoutes.length
+      ? xmlRoutes
+      : focusRoutes.map((r) => ({
+          id: r.id,
+          name: r.name,
+          colorName: r.colorName,
+          color: r.color,
+          grade: r.grade,
+          holds: (r.holds || []).map((h) => ({
+            ...h,
+            shape: h.shape || holdShape(h.hold_type),
+          })),
+        }));
+
+  const displayXml =
+    sceneXml ||
+    buildWallXml(routes, { wallName: wallMeta?.name || "Wall", wallId: wallMeta?.id || "" });
+
   return (
-    <div className="boards">
-      {boards.map((wall) => (
-        <HeatmapPanel
-          key={wall.key}
-          wall={wall}
-          routes={routes.filter((r) => r.wallKey === wall.key)}
-          selected={selectedWallKey === wall.key}
-          selectedRouteId={selectedRouteId}
-          onSelectWall={() => onSelectWall(wall.key)}
-          onSelectRoute={onSelectRoute}
-        />
-      ))}
+    <div className="boards boards-cartoon">
+      <div
+        className="board board-cartoon selected"
+        role="region"
+        aria-label="Cartoon route board"
+      >
+        <div className="board-head">
+          <span className="board-name">{wallMeta?.name || parsed?.wallName || "Wall"}</span>
+          <span className="board-meta">cartoon · XML</span>
+        </div>
+        <div className="cartoon-stage">
+          <svg className="cartoon-svg" viewBox="0 0 100 100" role="img">
+            {/* wall face */}
+            <rect x="0" y="0" width="100" height="100" fill="#d8d4cc" />
+            <rect x="0" y="0" width="100" height="100" fill="url(#boltGrid)" opacity="0.35" />
+            {/* crash pad */}
+            <rect x="0" y="94" width="100" height="6" fill="#2a4a8a" />
+            <defs>
+              <pattern id="boltGrid" width="4" height="4" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="0.35" fill="#5a5a5a" />
+              </pattern>
+            </defs>
+            {drawRoutes.map((route) =>
+              (route.holds || []).map((h, i) => (
+                <HoldShape
+                  key={`${route.id}-${h.sequence_index}-${i}`}
+                  hold={h}
+                  color={route.color}
+                  dimmed={Boolean(selectedRouteId && route.id !== selectedRouteId)}
+                  onClick={() => {
+                    onSelectWall?.(route.wallKey || selectedWallKey);
+                    onSelectRoute?.(route.id);
+                  }}
+                />
+              )),
+            )}
+          </svg>
+        </div>
+        <div className="board-routes">
+          {routes.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className={selectedRouteId === r.id ? "route-chip active" : "route-chip"}
+              onClick={() => {
+                onSelectWall?.(r.wallKey);
+                onSelectRoute?.(r.id);
+              }}
+            >
+              <i style={{ background: r.color }} />
+              {r.colorName || r.name} {r.grade}
+            </button>
+          ))}
+        </div>
+        <details className="xml-drawer">
+          <summary>Scene XML ({routes.length} routes) — edit to optimize</summary>
+          <pre>{displayXml}</pre>
+        </details>
+      </div>
     </div>
   );
 }
 
-function HeatmapPanel({
-  wall,
-  routes = [],
-  route,
-  selected,
-  selectedRouteId,
-  onSelectWall,
-  onSelectRoute,
-}) {
-  const primary = route || (selectedRouteId ? routes.find((r) => r.id === selectedRouteId) : null);
-  const showRoutes = route ? [route] : routes;
-  const bg = photoSrc(primary?.photoUrl);
+function HoldShape({ hold, color, dimmed, onClick }) {
+  const cx = (Number(hold.x) || 0.5) * 100;
+  const cy = (Number(hold.y) || 0.5) * 100;
+  const size = Number(hold.size) || 0.05;
+  const w = Math.max(1.5, Math.min(18, size * 55));
+  const h = w;
+  const shape = hold.shape || holdShape(hold.hold_type);
+  const opacity = dimmed ? 0.22 : 1;
+  const common = {
+    fill: color,
+    stroke: "#1a1a1a",
+    strokeWidth: 0.35,
+    opacity,
+    style: { cursor: "pointer" },
+    onClick,
+  };
 
-  const blobs = [];
-  for (const r of showRoutes) {
-    const active = !selectedRouteId || r.id === selectedRouteId;
-    if (!isLitStatus(r.status) && r.id !== selectedRouteId) continue;
-    if (selectedRouteId && r.id !== selectedRouteId) continue;
-    for (const h of r.holds || []) {
-      const x = h.x ?? ((h.col + 0.5) / (wall?.cols || 8));
-      const y = h.y ?? ((h.row + 0.5) / (wall?.rows || 10));
-      const size = h.size ?? 0.05;
-      blobs.push({
-        key: `${r.id}-${h.sequence_index}-${h.cell_index}`,
-        x,
-        y,
-        size,
-        color: r.color,
-        routeId: r.id,
-        label: `${r.colorName || r.name} #${(h.sequence_index ?? 0) + 1}`,
-        active,
-      });
-    }
+  if (shape === "triangle") {
+    const pts = `${cx},${cy - h / 2} ${cx + w / 2},${cy + h / 2} ${cx - w / 2},${cy + h / 2}`;
+    return <polygon points={pts} {...common} />;
   }
-
-  return (
-    <div
-      className={selected ? "board board-heat selected" : "board board-heat"}
-      onClick={onSelectWall}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onSelectWall();
-      }}
-      role="button"
-      tabIndex={0}
-    >
-      <div className="board-head">
-        <span className="board-name">{wall?.name || primary?.wall || "Wall"}</span>
-        <span className="board-meta">{wall?.zone || "heatmap"}</span>
-      </div>
-      <div
-        className={bg ? "heat-stage has-photo" : "heat-stage"}
-        style={bg ? { backgroundImage: `url(${bg})` } : undefined}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {!bg && <div className="heat-grid-bg" aria-hidden />}
-        <svg className="heat-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <defs>
-            {blobs.map((b) => (
-              <radialGradient key={`g-${b.key}`} id={`blob-${b.key}`} cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor={b.color} stopOpacity="0.95" />
-                <stop offset="55%" stopColor={b.color} stopOpacity="0.45" />
-                <stop offset="100%" stopColor={b.color} stopOpacity="0" />
-              </radialGradient>
-            ))}
-          </defs>
-          {blobs.map((b) => {
-            const r = Math.max(1.2, b.size * 55);
-            return (
-              <circle
-                key={b.key}
-                className="heat-blob"
-                cx={b.x * 100}
-                cy={b.y * 100}
-                r={r}
-                fill={`url(#blob-${b.key})`}
-                onClick={() => {
-                  onSelectWall();
-                  onSelectRoute(b.routeId);
-                }}
-              >
-                <title>{b.label}</title>
-              </circle>
-            );
-          })}
-        </svg>
-        {!blobs.length && <div className="heat-empty">No holds mapped yet</div>}
-      </div>
-      <div className="board-routes">
-        {(route ? [route] : routes).map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            className={
-              selectedRouteId === r.id
-                ? "route-chip active"
-                : isLitStatus(r.status)
-                  ? "route-chip"
-                  : "route-chip dim"
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectWall();
-              onSelectRoute(r.id);
-            }}
-          >
-            <i style={{ background: r.color }} />
-            {r.colorName || r.name} {r.grade}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  if (shape === "rounded_rect") {
+    return <rect x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx={w * 0.25} {...common} />;
+  }
+  if (shape === "oval") {
+    return <ellipse cx={cx} cy={cy} rx={w / 2} ry={h / 2.4} {...common} />;
+  }
+  if (shape === "polygon") {
+    const pts = [
+      [cx, cy - h / 2],
+      [cx + w / 2, cy - h / 6],
+      [cx + w / 3, cy + h / 2],
+      [cx - w / 3, cy + h / 2],
+      [cx - w / 2, cy - h / 6],
+    ]
+      .map(([x, y]) => `${x},${y}`)
+      .join(" ");
+    return <polygon points={pts} {...common} />;
+  }
+  return <circle cx={cx} cy={cy} r={w / 2} {...common} />;
 }

@@ -8,29 +8,21 @@ npm install
 npm run dev
 ```
 
-Optional `.env`:
+In dev, `/api` is proxied to the backend (default: Koyeb). Override:
 
 ```
-VITE_API_URL=https://holy-merrill-tormame-aafedec0.koyeb.app
+VITE_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
-## Data source
+Or set `VITE_API_URL` to hit an API directly (skips proxy).
 
-Routes and hold sequences load from the API (`GET /api/v1/routes`, `GET /api/v1/walls`).  
-No hardcoded route inventory — the list is empty until you add one.
+## Extract routes from one photo
 
-## Add route from photo
+**Add route** → upload a wall photo (no color picker).
 
-Use **Add route** in the dashboard (or `POST /api/v1/routes/from-image`):
+Backend auto-detects every colored line → returns:
 
-1. Pick a wall
-2. Upload a photo of the climb
-3. Vision AI returns a normalized hold grid (`row` / `col` / `hold_type`) and persists the route
+- One DB route per color
+- Editable `<wall>` **scene XML** (positions, shapes, colors)
 
-Optional overrides: name, color, grade.
-
-Manual create still works via `POST /api/v1/routes` with an explicit `holds` list.
-
-## AI insights
-
-Paste feedback → Analyze → click a route for keep / change-out guidance.
+The dashboard draws an independent **cartoon SVG** from that XML (not a photo highlight). Optimize later by rewriting the XML.

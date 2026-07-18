@@ -1,6 +1,6 @@
 export const API_BASE =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
-  "https://holy-merrill-tormame-aafedec0.koyeb.app";
+  (import.meta.env.DEV ? "" : "https://holy-merrill-tormame-aafedec0.koyeb.app");
 
 const STATUS_LABEL = {
   active: "Healthy",
@@ -9,7 +9,7 @@ const STATUS_LABEL = {
   archived: "Archived",
 };
 
-/** Map API route → dashboard / HoldGrid shape */
+/** Map API route → dashboard / cartoon board shape */
 export function mapApiRoute(r) {
   const setDate = r.set_date ? new Date(r.set_date) : null;
   const ageDays = r.health?.age_days ?? (setDate ? Math.floor((Date.now() - setDate) / 86400000) : 0);
@@ -42,6 +42,7 @@ export function mapApiRoute(r) {
       y: h.y ?? null,
       size: h.size ?? 0.05,
     })),
+    sceneXml: r.scene_xml || null,
     photoUrl: r.photo_url || null,
     health: r.health,
     notes: r.notes,
@@ -61,13 +62,11 @@ export async function fetchRoutes() {
   return (body.items || []).map(mapApiRoute);
 }
 
-export async function createRouteFromImage({ wallId, file, name, color, grade }) {
+/** Upload one wall photo → all routes + wall XML */
+export async function createRoutesFromImage({ wallId, file }) {
   const form = new FormData();
   form.append("wall_id", wallId);
   form.append("image", file);
-  if (name) form.append("name", name);
-  if (color) form.append("color_identifier", color);
-  if (grade) form.append("assigned_grade", grade);
 
   const res = await fetch(`${API_BASE}/api/v1/routes/from-image`, {
     method: "POST",
@@ -81,7 +80,18 @@ export async function createRouteFromImage({ wallId, file, name, color, grade })
       : detail || `Upload failed (${res.status})`;
     throw new Error(msg);
   }
-  return res.json();
+  const body = await res.json();
+  return {
+    routes: (body.routes || []).map(mapApiRoute),
+    xml: body.xml || "",
+    provider: body.provider,
+    total: body.total ?? (body.routes || []).length,
+  };
+}
+
+/** @deprecated use createRoutesFromImage */
+export async function createRouteFromImage(opts) {
+  return createRoutesFromImage(opts);
 }
 
 export async function analyzeFeedback(feedbackText, routes) {
