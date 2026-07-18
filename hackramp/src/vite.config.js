@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Dev proxy /api → deployed API (override with VITE_PROXY_TARGET if needed).
+// Dev proxy only /api/v1 to deployed API.
+// Do NOT proxy `/api` alone — that steals the local module `/api.js` and blanks the page.
 const proxyTarget =
   process.env.VITE_PROXY_TARGET || "https://holy-merrill-tormame-aafedec0.koyeb.app";
 
@@ -11,7 +12,7 @@ export default defineConfig({
     port: 5173,
     open: true,
     proxy: {
-      "/api": {
+      "/api/v1": {
         target: proxyTarget,
         changeOrigin: true,
       },
